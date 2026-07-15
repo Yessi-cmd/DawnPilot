@@ -10,6 +10,7 @@ Group=dawnpilot
 WorkingDirectory=/opt/dawnpilot
 EnvironmentFile=/etc/dawnpilot.env
 Environment=PYTHONUNBUFFERED=1
+UMask=0077
 ExecStart=/usr/bin/python3 /opt/dawnpilot/dawnpilot_server.py
 Restart=on-failure
 RestartSec=5
