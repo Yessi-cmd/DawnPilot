@@ -63,21 +63,12 @@ xcodebuild test \
 ## 导出 AltStore IPA
 
 ```bash
-xcodegen generate
-xcodebuild archive \
-  -project DawnPilot.xcodeproj \
-  -scheme DawnPilot \
-  -configuration Release \
-  -archivePath build/DawnPilot.xcarchive
-
-xcodebuild -exportArchive \
-  -archivePath build/DawnPilot.xcarchive \
-  -exportPath build \
-  -exportOptionsPlist Config/ExportOptions.plist
+./scripts/package-altstore.sh
 ```
 
-生成的 `build/DawnPilot.ipa` 可交给 AltStore 安装。构建产物和 DerivedData 均已
-从 Git 排除。
+脚本会全新编译未签名的 arm64 Release 真机版本，检查 IPA 结构并生成
+`build/DawnPilot.ipa`。该文件不包含 provisioning profile 或开发签名，交给
+AltStore 安装时使用你的 Apple ID 重签。构建产物和 DerivedData 均已从 Git 排除。
 
 ## 首次安装
 
