@@ -1,0 +1,471 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		020A41EB0FB976935DF9A37D /* BackgroundRefreshController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3F9A5C72AAF8E67B3F28660 /* BackgroundRefreshController.swift */; };
+		18813EAC0273F5F6ACE8005F /* RefreshTomorrowAlarmIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04C54A24DDA119F3C9642DB /* RefreshTomorrowAlarmIntent.swift */; };
+		24CF5E0BBAE0FAC064056E00 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6B98512CD54A1CCCCFBE67C /* ContentView.swift */; };
+		5242D6ED69424A858A6B55FC /* PrecipitationEvaluatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB6493238441C94918617446 /* PrecipitationEvaluatorTests.swift */; };
+		57D980DC543F3178139D4F3E /* AlarmCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDC67AFE740B4A74442F6340 /* AlarmCoordinator.swift */; };
+		5B041094B529C8B866368930 /* DawnPilotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63C529CFE118BC1F7ABAAAA /* DawnPilotApp.swift */; };
+		86CDE4F70252F9B2DBA7A6F9 /* WeatherProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2168A0B3E03FE90F3B3E9A2B /* WeatherProtocolTests.swift */; };
+		96F6277010ADD2953FE7F7D0 /* WeatherService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 249D8E0F4A771B12E9B896AF /* WeatherService.swift */; };
+		C082FE4690BD3F81A43C7E7D /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90AAAD48821BCFFCB11CEC04 /* AppModel.swift */; };
+		C3B4D15063464985A08C1176 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E3F6C5937A4089FDC8BCF46 /* SettingsStore.swift */; };
+		C7724B66444CE9F9F03A6667 /* WeatherModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E78FB89C2CD75914FFD8744 /* WeatherModels.swift */; };
+		C8EAB3732F0416253837B2DD /* PrecipitationEvaluator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3D38B4E2B6614760963169C /* PrecipitationEvaluator.swift */; };
+		F5A3FED49ADD4DD4942F930E /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25385C6ABF7370F5F15CA377 /* AppSettings.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		4A339C91356F5E947189EC53 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9A56E940829FFA81F772ACB6 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = EE7005707473488E59F00D55;
+			remoteInfo = DawnPilot;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		05D4DAEDE7A2F9AFF364A36B /* DawnPilot.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = DawnPilot.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2168A0B3E03FE90F3B3E9A2B /* WeatherProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherProtocolTests.swift; sourceTree = "<group>"; };
+		249D8E0F4A771B12E9B896AF /* WeatherService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherService.swift; sourceTree = "<group>"; };
+		25385C6ABF7370F5F15CA377 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
+		4E78FB89C2CD75914FFD8744 /* WeatherModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherModels.swift; sourceTree = "<group>"; };
+		7E3F6C5937A4089FDC8BCF46 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
+		8EE9D21928BEEB8C615637D4 /* DawnPilotTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = DawnPilotTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		90AAAD48821BCFFCB11CEC04 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		ABC696E898D8D3CEEEF92CCD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		B04C54A24DDA119F3C9642DB /* RefreshTomorrowAlarmIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefreshTomorrowAlarmIntent.swift; sourceTree = "<group>"; };
+		BB6493238441C94918617446 /* PrecipitationEvaluatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrecipitationEvaluatorTests.swift; sourceTree = "<group>"; };
+		CDC67AFE740B4A74442F6340 /* AlarmCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlarmCoordinator.swift; sourceTree = "<group>"; };
+		D3D38B4E2B6614760963169C /* PrecipitationEvaluator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrecipitationEvaluator.swift; sourceTree = "<group>"; };
+		E3F9A5C72AAF8E67B3F28660 /* BackgroundRefreshController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundRefreshController.swift; sourceTree = "<group>"; };
+		F63C529CFE118BC1F7ABAAAA /* DawnPilotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DawnPilotApp.swift; sourceTree = "<group>"; };
+		F6B98512CD54A1CCCCFBE67C /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		05719EDD8F43FCD8E03370D7 /* Intents */ = {
+			isa = PBXGroup;
+			children = (
+				B04C54A24DDA119F3C9642DB /* RefreshTomorrowAlarmIntent.swift */,
+			);
+			path = Intents;
+			sourceTree = "<group>";
+		};
+		4C58117B6AD021517F40207F /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				05D4DAEDE7A2F9AFF364A36B /* DawnPilot.app */,
+				8EE9D21928BEEB8C615637D4 /* DawnPilotTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		4D0896FED0C521CC3D1E1F47 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				25385C6ABF7370F5F15CA377 /* AppSettings.swift */,
+				4E78FB89C2CD75914FFD8744 /* WeatherModels.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		535959DB0CA09419AC38E3DD /* DawnPilotTests */ = {
+			isa = PBXGroup;
+			children = (
+				BB6493238441C94918617446 /* PrecipitationEvaluatorTests.swift */,
+				2168A0B3E03FE90F3B3E9A2B /* WeatherProtocolTests.swift */,
+			);
+			path = DawnPilotTests;
+			sourceTree = "<group>";
+		};
+		5AE652BF3DC3295D953FC7F9 /* DawnPilot */ = {
+			isa = PBXGroup;
+			children = (
+				90AAAD48821BCFFCB11CEC04 /* AppModel.swift */,
+				F63C529CFE118BC1F7ABAAAA /* DawnPilotApp.swift */,
+				ABC696E898D8D3CEEEF92CCD /* Info.plist */,
+				05719EDD8F43FCD8E03370D7 /* Intents */,
+				4D0896FED0C521CC3D1E1F47 /* Models */,
+				CF72116FFEBB6999E6C91415 /* Services */,
+				CA446EB84B5648E971B94475 /* Views */,
+			);
+			path = DawnPilot;
+			sourceTree = "<group>";
+		};
+		6C494219714B93C5E69C63C7 = {
+			isa = PBXGroup;
+			children = (
+				5AE652BF3DC3295D953FC7F9 /* DawnPilot */,
+				535959DB0CA09419AC38E3DD /* DawnPilotTests */,
+				4C58117B6AD021517F40207F /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		CA446EB84B5648E971B94475 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				F6B98512CD54A1CCCCFBE67C /* ContentView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		CF72116FFEBB6999E6C91415 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				CDC67AFE740B4A74442F6340 /* AlarmCoordinator.swift */,
+				E3F9A5C72AAF8E67B3F28660 /* BackgroundRefreshController.swift */,
+				D3D38B4E2B6614760963169C /* PrecipitationEvaluator.swift */,
+				7E3F6C5937A4089FDC8BCF46 /* SettingsStore.swift */,
+				249D8E0F4A771B12E9B896AF /* WeatherService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		AFEC1E6167BE9E865F2693B3 /* DawnPilotTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8BF8E60F738699A3845E0573 /* Build configuration list for PBXNativeTarget "DawnPilotTests" */;
+			buildPhases = (
+				8F29435BFC36AD20321F2D67 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				EC5150A5B396049321702F26 /* PBXTargetDependency */,
+			);
+			name = DawnPilotTests;
+			packageProductDependencies = (
+			);
+			productName = DawnPilotTests;
+			productReference = 8EE9D21928BEEB8C615637D4 /* DawnPilotTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		EE7005707473488E59F00D55 /* DawnPilot */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FFB1B02003DF2F53E9815598 /* Build configuration list for PBXNativeTarget "DawnPilot" */;
+			buildPhases = (
+				608BF331A3B26A2C1F7BB33D /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = DawnPilot;
+			packageProductDependencies = (
+			);
+			productName = DawnPilot;
+			productReference = 05D4DAEDE7A2F9AFF364A36B /* DawnPilot.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		9A56E940829FFA81F772ACB6 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 2600;
+				TargetAttributes = {
+					EE7005707473488E59F00D55 = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = B48A9B439BA850205381B753 /* Build configuration list for PBXProject "DawnPilot" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 6C494219714B93C5E69C63C7;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				EE7005707473488E59F00D55 /* DawnPilot */,
+				AFEC1E6167BE9E865F2693B3 /* DawnPilotTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		608BF331A3B26A2C1F7BB33D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				57D980DC543F3178139D4F3E /* AlarmCoordinator.swift in Sources */,
+				C082FE4690BD3F81A43C7E7D /* AppModel.swift in Sources */,
+				F5A3FED49ADD4DD4942F930E /* AppSettings.swift in Sources */,
+				020A41EB0FB976935DF9A37D /* BackgroundRefreshController.swift in Sources */,
+				24CF5E0BBAE0FAC064056E00 /* ContentView.swift in Sources */,
+				5B041094B529C8B866368930 /* DawnPilotApp.swift in Sources */,
+				C8EAB3732F0416253837B2DD /* PrecipitationEvaluator.swift in Sources */,
+				18813EAC0273F5F6ACE8005F /* RefreshTomorrowAlarmIntent.swift in Sources */,
+				C3B4D15063464985A08C1176 /* SettingsStore.swift in Sources */,
+				C7724B66444CE9F9F03A6667 /* WeatherModels.swift in Sources */,
+				96F6277010ADD2953FE7F7D0 /* WeatherService.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8F29435BFC36AD20321F2D67 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5242D6ED69424A858A6B55FC /* PrecipitationEvaluatorTests.swift in Sources */,
+				86CDE4F70252F9B2DBA7A6F9 /* WeatherProtocolTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		EC5150A5B396049321702F26 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = EE7005707473488E59F00D55 /* DawnPilot */;
+			targetProxy = 4A339C91356F5E947189EC53 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		2BD760C502A02206AEEBA522 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+		40713B759AA4323AE48EBD7A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				INFOPLIST_FILE = DawnPilot/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.yessicmd.dawnpilot;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		9A850323FECDF379282CEB35 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.yessicmd.dawnpilot.DawnPilotTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/DawnPilot.app/DawnPilot";
+			};
+			name = Release;
+		};
+		A820244347D5326DB2DE2F19 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.yessicmd.dawnpilot.DawnPilotTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/DawnPilot.app/DawnPilot";
+			};
+			name = Debug;
+		};
+		C4A5901A2CB947FCFC8D976D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+		EB6EA618B06004B9E78B6052 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 66WCCRKRLC;
+				INFOPLIST_FILE = DawnPilot/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.yessicmd.dawnpilot;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		8BF8E60F738699A3845E0573 /* Build configuration list for PBXNativeTarget "DawnPilotTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A820244347D5326DB2DE2F19 /* Debug */,
+				9A850323FECDF379282CEB35 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B48A9B439BA850205381B753 /* Build configuration list for PBXProject "DawnPilot" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C4A5901A2CB947FCFC8D976D /* Debug */,
+				2BD760C502A02206AEEBA522 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		FFB1B02003DF2F53E9815598 /* Build configuration list for PBXNativeTarget "DawnPilot" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				40713B759AA4323AE48EBD7A /* Debug */,
+				EB6EA618B06004B9E78B6052 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 9A56E940829FFA81F772ACB6 /* Project object */;
+}

@@ -1,0 +1,6 @@
+example.com {
+    handle_path /dawnpilot/* {
+        encode zstd gzip
+        reverse_proxy 127.0.0.1:8787
+    }
+}
