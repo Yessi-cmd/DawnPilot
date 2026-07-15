@@ -184,6 +184,8 @@ Verification should be proportional to the change:
 - Replace the canonical IPA only after all checks succeed. The script uses a
   temporary file and atomic replacement for this reason.
 - The IPA must contain exactly one unsigned `Payload/DawnPilot.app` for arm64.
+- It must include a compiled `AppIcon`, `Assets.car`, and standard iPhone bundle
+  metadata so AltStore can parse the application before re-signing it.
 - It must not contain `_CodeSignature`, `embedded.mobileprovision`, `PlugIns`,
   `.appex`, `.env` files, credentials, device identifiers, or user runtime data.
 - AltStore performs the final Apple ID signing. Unsigned status before handoff is

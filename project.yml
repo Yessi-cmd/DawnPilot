@@ -23,7 +23,9 @@ targets:
         CFBundleDisplayName: 晨航
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSRequiresIPhoneOS: true
         NSAlarmKitUsageDescription: 根据天气和你的通勤设置，为工作日安排可靠的起床闹钟。
+        UIApplicationSupportsIndirectInputEvents: true
         BGTaskSchedulerPermittedIdentifiers:
           - com.yessicmd.dawnpilot.refresh
         UIBackgroundModes:

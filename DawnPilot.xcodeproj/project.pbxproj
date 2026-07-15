@@ -13,6 +13,7 @@
 		5242D6ED69424A858A6B55FC /* PrecipitationEvaluatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB6493238441C94918617446 /* PrecipitationEvaluatorTests.swift */; };
 		57D980DC543F3178139D4F3E /* AlarmCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDC67AFE740B4A74442F6340 /* AlarmCoordinator.swift */; };
 		5B041094B529C8B866368930 /* DawnPilotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63C529CFE118BC1F7ABAAAA /* DawnPilotApp.swift */; };
+		6B463264A1C46EA4483B2468 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 332460A69250F875C1B0F410 /* Assets.xcassets */; };
 		86CDE4F70252F9B2DBA7A6F9 /* WeatherProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2168A0B3E03FE90F3B3E9A2B /* WeatherProtocolTests.swift */; };
 		96F6277010ADD2953FE7F7D0 /* WeatherService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 249D8E0F4A771B12E9B896AF /* WeatherService.swift */; };
 		C082FE4690BD3F81A43C7E7D /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90AAAD48821BCFFCB11CEC04 /* AppModel.swift */; };
@@ -37,6 +38,7 @@
 		2168A0B3E03FE90F3B3E9A2B /* WeatherProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherProtocolTests.swift; sourceTree = "<group>"; };
 		249D8E0F4A771B12E9B896AF /* WeatherService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherService.swift; sourceTree = "<group>"; };
 		25385C6ABF7370F5F15CA377 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
+		332460A69250F875C1B0F410 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		4E78FB89C2CD75914FFD8744 /* WeatherModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherModels.swift; sourceTree = "<group>"; };
 		7E3F6C5937A4089FDC8BCF46 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
 		8EE9D21928BEEB8C615637D4 /* DawnPilotTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = DawnPilotTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -91,6 +93,7 @@
 			isa = PBXGroup;
 			children = (
 				90AAAD48821BCFFCB11CEC04 /* AppModel.swift */,
+				332460A69250F875C1B0F410 /* Assets.xcassets */,
 				F63C529CFE118BC1F7ABAAAA /* DawnPilotApp.swift */,
 				ABC696E898D8D3CEEEF92CCD /* Info.plist */,
 				05719EDD8F43FCD8E03370D7 /* Intents */,
@@ -156,6 +159,7 @@
 			buildConfigurationList = FFB1B02003DF2F53E9815598 /* Build configuration list for PBXNativeTarget "DawnPilot" */;
 			buildPhases = (
 				608BF331A3B26A2C1F7BB33D /* Sources */,
+				76D06DB7FDA231E26F812DE7 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -201,6 +205,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		76D06DB7FDA231E26F812DE7 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6B463264A1C46EA4483B2468 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		608BF331A3B26A2C1F7BB33D /* Sources */ = {

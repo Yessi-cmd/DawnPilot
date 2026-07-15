@@ -84,6 +84,17 @@ if [[ "$bundle_identifier" != "com.yessicmd.dawnpilot" ]]; then
     exit 1
 fi
 
+requires_iphone="$(plutil -extract LSRequiresIPhoneOS raw "$STAGED_APP/Info.plist")"
+icon_name="$(plutil -extract CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconName raw "$STAGED_APP/Info.plist")"
+if [[ "$requires_iphone" != "true" || "$icon_name" != "AppIcon" ]]; then
+    echo "error: required iPhone or AppIcon metadata is missing" >&2
+    exit 1
+fi
+if [[ ! -f "$STAGED_APP/Assets.car" ]] || ! find "$STAGED_APP" -maxdepth 1 -name 'AppIcon*.png' -print -quit | grep -q .; then
+    echo "error: compiled AppIcon assets are missing" >&2
+    exit 1
+fi
+
 minimum_os="$(plutil -extract MinimumOSVersion raw "$STAGED_APP/Info.plist")"
 platform="$(plutil -extract CFBundleSupportedPlatforms.0 raw "$STAGED_APP/Info.plist")"
 if [[ "$platform" != "iPhoneOS" ]]; then
@@ -113,6 +124,7 @@ checksum="$(shasum -a 256 "$OUTPUT_IPA" | awk '{print $1}')"
 echo "Created: $OUTPUT_IPA"
 echo "Version: $version ($build_number)"
 echo "Bundle ID: $bundle_identifier"
+echo "App icon: $icon_name"
 echo "Platform: $platform, minimum iOS: $minimum_os"
 echo "Architectures: $architectures"
 echo "SHA-256: $checksum"
