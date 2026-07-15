@@ -107,6 +107,7 @@ struct ContentView: View {
 
 private struct SettingsView: View {
     @ObservedObject var model: AppModel
+    @State private var showsManualLocation = false
 
     var body: some View {
         Form {
@@ -118,21 +119,54 @@ private struct SettingsView: View {
                     .textInputAutocapitalization(.never)
             }
 
-            Section("固定位置") {
-                TextField(
-                    "纬度",
-                    value: $model.settings.latitude,
-                    format: .number.precision(.fractionLength(4...6))
-                )
-                .keyboardType(.numbersAndPunctuation)
-                TextField(
-                    "经度",
-                    value: $model.settings.longitude,
-                    format: .number.precision(.fractionLength(4...6))
-                )
-                .keyboardType(.numbersAndPunctuation)
-                TextField("时区", text: $model.settings.timeZoneIdentifier)
-                    .textInputAutocapitalization(.never)
+            Section {
+                Button {
+                    model.useCurrentLocation()
+                } label: {
+                    HStack {
+                        Label(
+                            model.settings.locationName == nil ? "使用当前位置" : "重新获取当前位置",
+                            systemImage: "location.fill"
+                        )
+                        Spacer()
+                        if model.isLocating {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+                    }
+                }
+                .disabled(model.isLocating)
+
+                LabeledContent("天气地点") {
+                    Text(model.settings.locationName ?? "尚未自动确认")
+                        .foregroundStyle(model.settings.locationName == nil ? .secondary : .primary)
+                }
+                LabeledContent("坐标") {
+                    Text(coordinateText)
+                        .monospacedDigit()
+                }
+                LabeledContent("时区", value: model.settings.timeZoneIdentifier)
+
+                DisclosureGroup("高级：手动输入位置", isExpanded: $showsManualLocation) {
+                    TextField(
+                        "纬度",
+                        value: coordinateBinding(\.latitude),
+                        format: .number.precision(.fractionLength(4...6))
+                    )
+                    .keyboardType(.numbersAndPunctuation)
+                    TextField(
+                        "经度",
+                        value: coordinateBinding(\.longitude),
+                        format: .number.precision(.fractionLength(4...6))
+                    )
+                    .keyboardType(.numbersAndPunctuation)
+                    TextField("时区", text: $model.settings.timeZoneIdentifier)
+                        .textInputAutocapitalization(.never)
+                }
+            } header: {
+                Text("天气位置")
+            } footer: {
+                Text("点击后获取一次位置并立即保存在本机；不会持续跟踪或使用后台定位。大致位置已经足够判断天气。")
             }
 
             Section("闹钟时间") {
@@ -177,11 +211,11 @@ private struct SettingsView: View {
                 Button {
                     model.saveAndRebuild()
                 } label: {
-                    Label("保存、重建并更新明日闹钟", systemImage: "checkmark.circle")
+                    Label("应用设置并更新明日闹钟", systemImage: "checkmark.circle")
                 }
-                .disabled(model.isWorking)
+                .disabled(model.isWorking || model.isLocating)
             } footer: {
-                Text("保存会先恢复未来 14 天的默认闹钟，再尝试用最新天气替换明天的一条。")
+                Text("应用设置会先恢复未来 14 天的默认闹钟，再尝试用最新天气替换明天的一条。")
             }
         }
         .navigationTitle("设置")
@@ -197,6 +231,20 @@ private struct SettingsView: View {
                 set: { model.settings[keyPath: keyPath] = ClockTime(date: $0) }
             ),
             displayedComponents: .hourAndMinute
+        )
+    }
+
+    private var coordinateText: String {
+        String(format: "%.4f, %.4f", model.settings.latitude, model.settings.longitude)
+    }
+
+    private func coordinateBinding(_ keyPath: WritableKeyPath<AppSettings, Double>) -> Binding<Double> {
+        Binding(
+            get: { model.settings[keyPath: keyPath] },
+            set: { value in
+                model.settings[keyPath: keyPath] = value
+                model.settings.locationName = nil
+            }
         )
     }
 }

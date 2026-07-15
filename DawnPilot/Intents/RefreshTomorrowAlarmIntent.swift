@@ -1,9 +1,9 @@
 import AppIntents
 
 struct RefreshTomorrowAlarmIntent: AppIntent {
-    static var title: LocalizedStringResource = "更新明日闹钟"
-    static var description = IntentDescription("获取天气并更新明天的通勤起床闹钟。")
-    static var openAppWhenRun = false
+    static let title: LocalizedStringResource = "更新明日闹钟"
+    static let description = IntentDescription("获取天气并更新明天的通勤起床闹钟。")
+    static let openAppWhenRun = false
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let settings = SettingsStore.loadSettings()
@@ -25,5 +25,5 @@ struct DawnPilotShortcuts: AppShortcutsProvider {
         )
     }
 
-    static var shortcutTileColor: ShortcutTileColor = .purple
+    static let shortcutTileColor: ShortcutTileColor = .purple
 }

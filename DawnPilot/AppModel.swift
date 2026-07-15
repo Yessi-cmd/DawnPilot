@@ -7,7 +7,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var records: [ManagedAlarmRecord] = []
     @Published private(set) var authorizationText = "读取中"
     @Published private(set) var isWorking = false
+    @Published private(set) var isLocating = false
     @Published var alertMessage: String?
+
+    private let currentLocationService = CurrentLocationService()
 
     init() {
         settings = SettingsStore.loadSettings()
@@ -36,6 +39,26 @@ final class AppModel: ObservableObject {
         run {
             SettingsStore.saveSettings(self.settings)
             _ = try await AlarmCoordinator.shared.refreshTomorrow(settings: self.settings)
+        }
+    }
+
+    func useCurrentLocation() {
+        guard !isLocating else { return }
+        isLocating = true
+        alertMessage = nil
+
+        Task {
+            defer { isLocating = false }
+            do {
+                let location = try await currentLocationService.resolveCurrentLocation()
+                settings.latitude = location.latitude
+                settings.longitude = location.longitude
+                settings.locationName = location.displayName
+                settings.timeZoneIdentifier = location.timeZoneIdentifier
+                SettingsStore.saveSettings(settings)
+            } catch {
+                alertMessage = error.localizedDescription
+            }
         }
     }
 

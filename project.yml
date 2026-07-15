@@ -10,7 +10,7 @@ settings:
     SWIFT_VERSION: "5.9"
     GENERATE_INFOPLIST_FILE: NO
     MARKETING_VERSION: "0.1.0"
-    CURRENT_PROJECT_VERSION: 1
+    CURRENT_PROJECT_VERSION: 2
 targets:
   DawnPilot:
     type: application
@@ -25,6 +25,7 @@ targets:
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSRequiresIPhoneOS: true
         NSAlarmKitUsageDescription: 根据天气和你的通勤设置，为工作日安排可靠的起床闹钟。
+        NSLocationWhenInUseUsageDescription: 仅在你主动点击时获取一次当前位置，用于自动填写天气查询地点；晨航不会持续跟踪位置。
         UIApplicationSupportsIndirectInputEvents: true
         BGTaskSchedulerPermittedIdentifiers:
           - com.yessicmd.dawnpilot.refresh

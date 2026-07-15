@@ -16,6 +16,8 @@
 		6B463264A1C46EA4483B2468 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 332460A69250F875C1B0F410 /* Assets.xcassets */; };
 		86CDE4F70252F9B2DBA7A6F9 /* WeatherProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2168A0B3E03FE90F3B3E9A2B /* WeatherProtocolTests.swift */; };
 		96F6277010ADD2953FE7F7D0 /* WeatherService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 249D8E0F4A771B12E9B896AF /* WeatherService.swift */; };
+		9906623E56E3D024571D5A7A /* AppSettingsMigrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E770BC7F19E192301299A30D /* AppSettingsMigrationTests.swift */; };
+		B4858DA16187E142B4B93912 /* CurrentLocationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CE18C93F178437D559E39C /* CurrentLocationService.swift */; };
 		C082FE4690BD3F81A43C7E7D /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90AAAD48821BCFFCB11CEC04 /* AppModel.swift */; };
 		C3B4D15063464985A08C1176 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E3F6C5937A4089FDC8BCF46 /* SettingsStore.swift */; };
 		C7724B66444CE9F9F03A6667 /* WeatherModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E78FB89C2CD75914FFD8744 /* WeatherModels.swift */; };
@@ -46,9 +48,11 @@
 		ABC696E898D8D3CEEEF92CCD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		B04C54A24DDA119F3C9642DB /* RefreshTomorrowAlarmIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefreshTomorrowAlarmIntent.swift; sourceTree = "<group>"; };
 		BB6493238441C94918617446 /* PrecipitationEvaluatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrecipitationEvaluatorTests.swift; sourceTree = "<group>"; };
+		C4CE18C93F178437D559E39C /* CurrentLocationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CurrentLocationService.swift; sourceTree = "<group>"; };
 		CDC67AFE740B4A74442F6340 /* AlarmCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlarmCoordinator.swift; sourceTree = "<group>"; };
 		D3D38B4E2B6614760963169C /* PrecipitationEvaluator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrecipitationEvaluator.swift; sourceTree = "<group>"; };
 		E3F9A5C72AAF8E67B3F28660 /* BackgroundRefreshController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundRefreshController.swift; sourceTree = "<group>"; };
+		E770BC7F19E192301299A30D /* AppSettingsMigrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettingsMigrationTests.swift; sourceTree = "<group>"; };
 		F63C529CFE118BC1F7ABAAAA /* DawnPilotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DawnPilotApp.swift; sourceTree = "<group>"; };
 		F6B98512CD54A1CCCCFBE67C /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -83,6 +87,7 @@
 		535959DB0CA09419AC38E3DD /* DawnPilotTests */ = {
 			isa = PBXGroup;
 			children = (
+				E770BC7F19E192301299A30D /* AppSettingsMigrationTests.swift */,
 				BB6493238441C94918617446 /* PrecipitationEvaluatorTests.swift */,
 				2168A0B3E03FE90F3B3E9A2B /* WeatherProtocolTests.swift */,
 			);
@@ -126,6 +131,7 @@
 			children = (
 				CDC67AFE740B4A74442F6340 /* AlarmCoordinator.swift */,
 				E3F9A5C72AAF8E67B3F28660 /* BackgroundRefreshController.swift */,
+				C4CE18C93F178437D559E39C /* CurrentLocationService.swift */,
 				D3D38B4E2B6614760963169C /* PrecipitationEvaluator.swift */,
 				7E3F6C5937A4089FDC8BCF46 /* SettingsStore.swift */,
 				249D8E0F4A771B12E9B896AF /* WeatherService.swift */,
@@ -227,6 +233,7 @@
 				F5A3FED49ADD4DD4942F930E /* AppSettings.swift in Sources */,
 				020A41EB0FB976935DF9A37D /* BackgroundRefreshController.swift in Sources */,
 				24CF5E0BBAE0FAC064056E00 /* ContentView.swift in Sources */,
+				B4858DA16187E142B4B93912 /* CurrentLocationService.swift in Sources */,
 				5B041094B529C8B866368930 /* DawnPilotApp.swift in Sources */,
 				C8EAB3732F0416253837B2DD /* PrecipitationEvaluator.swift in Sources */,
 				18813EAC0273F5F6ACE8005F /* RefreshTomorrowAlarmIntent.swift in Sources */,
@@ -240,6 +247,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				9906623E56E3D024571D5A7A /* AppSettingsMigrationTests.swift in Sources */,
 				5242D6ED69424A858A6B55FC /* PrecipitationEvaluatorTests.swift in Sources */,
 				86CDE4F70252F9B2DBA7A6F9 /* WeatherProtocolTests.swift in Sources */,
 			);
@@ -290,7 +298,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -399,7 +407,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
