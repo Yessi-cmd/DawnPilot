@@ -22,6 +22,9 @@ struct ContentView: View {
                             scene: scene
                         )
                         VStack(spacing: 12) {
+                            if !model.records.isEmpty {
+                                alarmList
+                            }
                             protectionCard
                             latestStatusCard
                         }
@@ -149,6 +152,52 @@ struct ContentView: View {
         }
         return "已有 \(model.records.count) 个未来闹钟，天气失败也不会漏响"
     }
+
+    private var alarmList: some View {
+        VStack(spacing: 8) {
+            Label("未来闹钟", systemImage: "list.bullet.rectangle.portrait")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            ForEach(model.records) { record in
+                HStack(spacing: 12) {
+                    Image(systemName: record.kind.iconName)
+                        .symbolRenderingMode(.multicolor)
+                        .font(.system(size: 20, weight: .semibold))
+                        .frame(width: 32, height: 32)
+                        .background(.white.opacity(0.10), in: Circle())
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(record.dateDescription(calendar: model.settings.calendar))
+                            .font(.subheadline.weight(.medium))
+                        Text(record.kindDescription)
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.62))
+                    }
+
+                    Spacer(minLength: 0)
+
+                    Text(ClockTime(date: record.fireDate, calendar: model.settings.calendar).displayText)
+                        .font(.system(.title3, design: .rounded, weight: .semibold))
+                        .monospacedDigit()
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
+                .contextMenu {
+                    Button(role: .destructive) {
+                        model.cancelAlarm(record)
+                    } label: {
+                        Label("删除此闹钟", systemImage: "trash")
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .weatherPanel(scene: scene)
+    }
 }
 
 private struct AlarmHeroView: View {
@@ -249,12 +298,17 @@ private struct AlarmHeroView: View {
                 0,
                 settings.clearAlarmTime.minutesFromMidnight - settings.rainyAlarmTime.minutesFromMidnight
             )
-            return advance > 0 ? "预计有雨，已提前 \(advance) 分钟" : "预计有雨，按雨天规则唤醒"
+            let reason = advance > 0 ? "预计有雨，已提前 \(advance) 分钟" : "预计有雨，按雨天规则唤醒"
+            return manualPrefix + reason
         case .clear:
-            return "通勤时段无明显降水"
+            return manualPrefix + "通勤时段无明显降水"
         case .fallback:
-            return "天气暂不可用，使用保底时间"
+            return manualPrefix + "天气暂不可用，使用保底时间"
         }
+    }
+
+    private var manualPrefix: String {
+        record?.origin == .manualOverride ? "临时闹钟 · " : ""
     }
 }
 
@@ -313,7 +367,20 @@ private struct RefreshDock: View {
 
     private var primaryActionTitle: String {
         if model.isWorking { return "正在更新…" }
-        return isAuthorized ? "更新明日闹钟" : "开启守护"
+        guard isAuthorized else { return "开启守护" }
+        return isTomorrowEnabled ? "更新明日闹钟" : "临时设明日闹钟"
+    }
+
+    private var isTomorrowEnabled: Bool {
+        let calendar = model.settings.calendar
+        guard let tomorrow = calendar.date(
+            byAdding: .day,
+            value: 1,
+            to: calendar.startOfDay(for: Date())
+        ) else {
+            return true
+        }
+        return model.settings.isEnabledAlarmDay(tomorrow)
     }
 }
 

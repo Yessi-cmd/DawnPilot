@@ -38,7 +38,23 @@ final class AppModel: ObservableObject {
     func refreshNow() {
         run {
             SettingsStore.saveSettings(self.settings)
-            _ = try await AlarmCoordinator.shared.refreshTomorrow(settings: self.settings)
+            _ = try await AlarmCoordinator.shared.refreshTomorrow(
+                settings: self.settings,
+                trigger: .userInitiated
+            )
+        }
+    }
+
+    func cancelAlarm(_ record: ManagedAlarmRecord) {
+        alertMessage = nil
+        Task {
+            do {
+                try await AlarmCoordinator.shared.cancelAlarm(dateKey: record.dateKey)
+            } catch {
+                alertMessage = error.localizedDescription
+            }
+            let snapshot = await AlarmCoordinator.shared.snapshot()
+            apply(snapshot)
         }
     }
 
@@ -51,14 +67,23 @@ final class AppModel: ObservableObject {
             defer { isLocating = false }
             do {
                 let location = try await currentLocationService.resolveCurrentLocation()
+                let timeZoneChanged = location.timeZoneIdentifier != settings.timeZoneIdentifier
                 settings.latitude = location.latitude
                 settings.longitude = location.longitude
                 settings.locationName = location.displayName
                 settings.timeZoneIdentifier = location.timeZoneIdentifier
                 SettingsStore.saveSettings(settings)
+                if timeZoneChanged {
+                    // Best-effort: rebuild all fallback alarms so date keys
+                    // match the new time zone. If AlarmKit hasn't been authorized
+                    // yet there is nothing to rebuild, so treat failure as non-fatal.
+                    _ = try? await AlarmCoordinator.shared.rebuildFallbacks(settings: self.settings)
+                }
             } catch {
                 alertMessage = error.localizedDescription
             }
+            let snapshot = await AlarmCoordinator.shared.snapshot()
+            apply(snapshot)
         }
     }
 
@@ -67,7 +92,6 @@ final class AppModel: ObservableObject {
             SettingsStore.saveSettings(settings)
             run {
                 _ = try await AlarmCoordinator.shared.rebuildFallbacks(settings: self.settings)
-                _ = try await AlarmCoordinator.shared.refreshTomorrow(settings: self.settings)
             }
             return
         }

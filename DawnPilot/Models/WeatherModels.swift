@@ -56,6 +56,19 @@ enum ManagedAlarmKind: String, Codable, Sendable {
         case .fallback: "保底"
         }
     }
+
+    var iconName: String {
+        switch self {
+        case .rainy: "cloud.rain.fill"
+        case .clear: "sun.horizon.fill"
+        case .fallback: "cloud.fog.fill"
+        }
+    }
+}
+
+enum ManagedAlarmOrigin: String, Codable, Sendable {
+    case automatic
+    case manualOverride
 }
 
 struct WeatherEvaluation: Equatable, Sendable {
@@ -82,7 +95,55 @@ struct ManagedAlarmRecord: Codable, Equatable, Identifiable, Sendable {
     let alarmID: UUID
     let fireDate: Date
     let kind: ManagedAlarmKind
+    let origin: ManagedAlarmOrigin
     let updatedAt: Date
+
+    init(
+        dateKey: String,
+        alarmID: UUID,
+        fireDate: Date,
+        kind: ManagedAlarmKind,
+        origin: ManagedAlarmOrigin = .automatic,
+        updatedAt: Date
+    ) {
+        self.dateKey = dateKey
+        self.alarmID = alarmID
+        self.fireDate = fireDate
+        self.kind = kind
+        self.origin = origin
+        self.updatedAt = updatedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case dateKey
+        case alarmID
+        case fireDate
+        case kind
+        case origin
+        case updatedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        dateKey = try container.decode(String.self, forKey: .dateKey)
+        alarmID = try container.decode(UUID.self, forKey: .alarmID)
+        fireDate = try container.decode(Date.self, forKey: .fireDate)
+        kind = try container.decode(ManagedAlarmKind.self, forKey: .kind)
+        origin = try container.decodeIfPresent(ManagedAlarmOrigin.self, forKey: .origin) ?? .automatic
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+    }
+
+    func dateDescription(calendar: Calendar) -> String {
+        let components = calendar.dateComponents([.month, .day, .weekday], from: fireDate)
+        let names = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"]
+        let weekday = max(1, min(7, components.weekday ?? 1)) - 1
+        return "\(components.month ?? 0)月\(components.day ?? 0)日 · \(names[weekday])"
+    }
+
+    var kindDescription: String {
+        let prefix = origin == .manualOverride ? "临时 · " : ""
+        return prefix + kind.displayName
+    }
 }
 
 enum RefreshOutcome: String, Codable, Sendable {

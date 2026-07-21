@@ -25,6 +25,7 @@
 		C7724B66444CE9F9F03A6667 /* WeatherModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E78FB89C2CD75914FFD8744 /* WeatherModels.swift */; };
 		C8EAB3732F0416253837B2DD /* PrecipitationEvaluator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3D38B4E2B6614760963169C /* PrecipitationEvaluator.swift */; };
 		F5A3FED49ADD4DD4942F930E /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25385C6ABF7370F5F15CA377 /* AppSettings.swift */; };
+		FD8A75244298DE1BC68D0918 /* AlarmRefreshTriggerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53085BE9798FF29CEB718AFE /* AlarmRefreshTriggerTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -45,6 +46,7 @@
 		26C118EC6B89A178B1D98A63 /* WeatherBackgroundView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherBackgroundView.swift; sourceTree = "<group>"; };
 		332460A69250F875C1B0F410 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		4E78FB89C2CD75914FFD8744 /* WeatherModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherModels.swift; sourceTree = "<group>"; };
+		53085BE9798FF29CEB718AFE /* AlarmRefreshTriggerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlarmRefreshTriggerTests.swift; sourceTree = "<group>"; };
 		5E2A2EB3D0AFF3D2C91D7715 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		7E3F6C5937A4089FDC8BCF46 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
 		8EE9D21928BEEB8C615637D4 /* DawnPilotTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = DawnPilotTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -91,6 +93,7 @@
 		535959DB0CA09419AC38E3DD /* DawnPilotTests */ = {
 			isa = PBXGroup;
 			children = (
+				53085BE9798FF29CEB718AFE /* AlarmRefreshTriggerTests.swift */,
 				E770BC7F19E192301299A30D /* AppSettingsMigrationTests.swift */,
 				BB6493238441C94918617446 /* PrecipitationEvaluatorTests.swift */,
 				2168A0B3E03FE90F3B3E9A2B /* WeatherProtocolTests.swift */,
@@ -255,6 +258,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FD8A75244298DE1BC68D0918 /* AlarmRefreshTriggerTests.swift in Sources */,
 				9906623E56E3D024571D5A7A /* AppSettingsMigrationTests.swift in Sources */,
 				5242D6ED69424A858A6B55FC /* PrecipitationEvaluatorTests.swift in Sources */,
 				86CDE4F70252F9B2DBA7A6F9 /* WeatherProtocolTests.swift in Sources */,
