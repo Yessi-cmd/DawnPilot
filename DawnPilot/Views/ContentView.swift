@@ -22,7 +22,7 @@ struct ContentView: View {
                             scene: scene
                         )
                         VStack(spacing: 12) {
-                            if !model.records.isEmpty {
+                            if !model.records.isEmpty || !model.cancelledDates.isEmpty {
                                 alarmList
                             }
                             protectionCard
@@ -96,7 +96,7 @@ struct ContentView: View {
                 .background(.white.opacity(0.08), in: Circle())
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(model.records.isEmpty ? "保底守护尚未开启" : "未来 14 天守护已开启")
+                Text(protectionTitle)
                     .font(.subheadline.weight(.semibold))
                 Text(protectionDetail)
                     .font(.caption)
@@ -147,10 +147,23 @@ struct ContentView: View {
     }
 
     private var protectionDetail: String {
+        if !model.cancelledDates.isEmpty {
+            return "已取消 \(model.cancelledDates.count) 天，自动刷新不会恢复这些闹钟"
+        }
         guard !model.records.isEmpty else {
             return "授权后会为启用日建立可靠的保底闹钟"
         }
         return "已有 \(model.records.count) 个未来闹钟，天气失败也不会漏响"
+    }
+
+    private var protectionTitle: String {
+        if !model.cancelledDates.isEmpty {
+            return "已按你的取消安排更新"
+        }
+        if model.records.isEmpty {
+            return "保底守护尚未开启"
+        }
+        return "未来 14 天守护已开启"
     }
 
     private var alarmList: some View {
@@ -181,17 +194,75 @@ struct ContentView: View {
                     Text(ClockTime(date: record.fireDate, calendar: model.settings.calendar).displayText)
                         .font(.system(.title3, design: .rounded, weight: .semibold))
                         .monospacedDigit()
+
+                    Button {
+                        model.cancelAlarm(record)
+                    } label: {
+                        if model.isMutatingAlarm(record.dateKey) {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Label("取消", systemImage: "trash")
+                        }
+                    }
+                    .font(.caption.weight(.semibold))
+                    .buttonStyle(.glass)
+                    .tint(.red)
+                    .disabled(model.isMutatingAlarm(record.dateKey))
+                    .accessibilityLabel("取消\(record.dateDescription(calendar: model.settings.calendar))的闹钟")
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
                 .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
-                .contextMenu {
-                    Button(role: .destructive) {
-                        model.cancelAlarm(record)
-                    } label: {
-                        Label("删除此闹钟", systemImage: "trash")
+            }
+
+            if !model.cancelledDates.isEmpty {
+                Divider()
+                    .overlay(.white.opacity(0.24))
+                    .padding(.vertical, 4)
+
+                Label("已取消", systemImage: "alarm.waves.left.and.right.slash")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                ForEach(model.cancelledDates) { cancelledDate in
+                    HStack(spacing: 12) {
+                        Image(systemName: "alarm.waves.left.and.right.slash")
+                            .font(.system(size: 20, weight: .semibold))
+                            .frame(width: 32, height: 32)
+                            .background(.white.opacity(0.10), in: Circle())
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(cancelledDate.dateDescription(calendar: model.settings.calendar))
+                                .font(.subheadline.weight(.medium))
+                            Text("自动更新不会恢复")
+                                .font(.caption)
+                                .foregroundStyle(.white.opacity(0.62))
+                        }
+
+                        Spacer(minLength: 0)
+
+                        Button {
+                            model.restoreAlarm(cancelledDate)
+                        } label: {
+                            if model.isMutatingAlarm(cancelledDate.dateKey) {
+                                ProgressView()
+                                    .tint(.white)
+                            } else {
+                                Label("恢复", systemImage: "arrow.counterclockwise")
+                            }
+                        }
+                        .font(.caption.weight(.semibold))
+                        .buttonStyle(.glass)
+                        .disabled(model.isMutatingAlarm(cancelledDate.dateKey))
+                        .accessibilityLabel("恢复\(cancelledDate.dateDescription(calendar: model.settings.calendar))的闹钟")
                     }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
                 }
             }
         }

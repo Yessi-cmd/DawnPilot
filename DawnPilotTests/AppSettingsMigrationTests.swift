@@ -42,4 +42,20 @@ final class AppSettingsMigrationTests: XCTestCase {
         XCTAssertEqual(decoded.dateKey, record.dateKey)
         XCTAssertEqual(decoded.alarmID, record.alarmID)
     }
+
+    func testCancelledDatesRoundTripAndMissingStoreFallsBackToEmpty() {
+        let suiteName = "DawnPilotTests.CancelledDates.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        XCTAssertEqual(SettingsStore.loadCancelledDates(defaults: defaults), [])
+
+        let cancelledDate = CancelledAlarmDate(
+            dateKey: "2026-07-23",
+            cancelledAt: Date(timeIntervalSinceReferenceDate: 806_371_200)
+        )
+        SettingsStore.saveCancelledDates([cancelledDate], defaults: defaults)
+
+        XCTAssertEqual(SettingsStore.loadCancelledDates(defaults: defaults), [cancelledDate])
+    }
 }

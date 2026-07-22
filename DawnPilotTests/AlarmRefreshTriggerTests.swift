@@ -46,4 +46,24 @@ final class AlarmRefreshTriggerTests: XCTestCase {
 
         XCTAssertEqual(origin, .automatic)
     }
+
+    func testCancellationTakesPriorityOverAnEnabledDay() {
+        let decision = AlarmDateSchedulingPolicy.decision(
+            dateKey: "2026-07-23",
+            isEnabledAlarmDay: true,
+            cancelledDateKeys: ["2026-07-23"]
+        )
+
+        XCTAssertEqual(decision, .userCancelled)
+    }
+
+    func testRestoredDateCanScheduleAgain() {
+        let decision = AlarmDateSchedulingPolicy.decision(
+            dateKey: "2026-07-23",
+            isEnabledAlarmDay: true,
+            cancelledDateKeys: []
+        )
+
+        XCTAssertEqual(decision, .schedule)
+    }
 }

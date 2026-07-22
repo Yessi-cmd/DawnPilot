@@ -3,6 +3,7 @@ import Foundation
 enum SettingsStore {
     private static let settingsKey = "dawnPilot.settings.v1"
     private static let recordsKey = "dawnPilot.records.v1"
+    private static let cancelledDatesKey = "dawnPilot.cancelledDates.v1"
     private static let statusKey = "dawnPilot.status.v1"
 
     static func loadSettings(defaults: UserDefaults = .standard) -> AppSettings {
@@ -19,6 +20,14 @@ enum SettingsStore {
 
     static func saveRecords(_ records: [ManagedAlarmRecord], defaults: UserDefaults = .standard) {
         encode(records, key: recordsKey, defaults: defaults)
+    }
+
+    static func loadCancelledDates(defaults: UserDefaults = .standard) -> [CancelledAlarmDate] {
+        decode([CancelledAlarmDate].self, key: cancelledDatesKey, defaults: defaults) ?? []
+    }
+
+    static func saveCancelledDates(_ dates: [CancelledAlarmDate], defaults: UserDefaults = .standard) {
+        encode(dates, key: cancelledDatesKey, defaults: defaults)
     }
 
     static func loadStatus(defaults: UserDefaults = .standard) -> RefreshStatus {

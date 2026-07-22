@@ -10,10 +10,12 @@
 		020A41EB0FB976935DF9A37D /* BackgroundRefreshController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3F9A5C72AAF8E67B3F28660 /* BackgroundRefreshController.swift */; };
 		18813EAC0273F5F6ACE8005F /* RefreshTomorrowAlarmIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04C54A24DDA119F3C9642DB /* RefreshTomorrowAlarmIntent.swift */; };
 		24CF5E0BBAE0FAC064056E00 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6B98512CD54A1CCCCFBE67C /* ContentView.swift */; };
+		2DCCB3B941D6C0EE882ADC01 /* AlarmDateSchedulingPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88CFBD5684B4C2E6FCB22AB0 /* AlarmDateSchedulingPolicy.swift */; };
 		5242D6ED69424A858A6B55FC /* PrecipitationEvaluatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB6493238441C94918617446 /* PrecipitationEvaluatorTests.swift */; };
 		57D980DC543F3178139D4F3E /* AlarmCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDC67AFE740B4A74442F6340 /* AlarmCoordinator.swift */; };
 		5B041094B529C8B866368930 /* DawnPilotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63C529CFE118BC1F7ABAAAA /* DawnPilotApp.swift */; };
 		6B463264A1C46EA4483B2468 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 332460A69250F875C1B0F410 /* Assets.xcassets */; };
+		8343C0F7B38D1152B0E2C596 /* CancelledAlarmDate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7CB53EE611FACEFCB975996 /* CancelledAlarmDate.swift */; };
 		86CDE4F70252F9B2DBA7A6F9 /* WeatherProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2168A0B3E03FE90F3B3E9A2B /* WeatherProtocolTests.swift */; };
 		96F6277010ADD2953FE7F7D0 /* WeatherService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 249D8E0F4A771B12E9B896AF /* WeatherService.swift */; };
 		97C38B1392BA76DFBA62EEFC /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E2A2EB3D0AFF3D2C91D7715 /* SettingsView.swift */; };
@@ -49,6 +51,7 @@
 		53085BE9798FF29CEB718AFE /* AlarmRefreshTriggerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlarmRefreshTriggerTests.swift; sourceTree = "<group>"; };
 		5E2A2EB3D0AFF3D2C91D7715 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		7E3F6C5937A4089FDC8BCF46 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
+		88CFBD5684B4C2E6FCB22AB0 /* AlarmDateSchedulingPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlarmDateSchedulingPolicy.swift; sourceTree = "<group>"; };
 		8EE9D21928BEEB8C615637D4 /* DawnPilotTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = DawnPilotTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		90AAAD48821BCFFCB11CEC04 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		ABC696E898D8D3CEEEF92CCD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -59,6 +62,7 @@
 		D3D38B4E2B6614760963169C /* PrecipitationEvaluator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrecipitationEvaluator.swift; sourceTree = "<group>"; };
 		E3F9A5C72AAF8E67B3F28660 /* BackgroundRefreshController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundRefreshController.swift; sourceTree = "<group>"; };
 		E770BC7F19E192301299A30D /* AppSettingsMigrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettingsMigrationTests.swift; sourceTree = "<group>"; };
+		E7CB53EE611FACEFCB975996 /* CancelledAlarmDate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CancelledAlarmDate.swift; sourceTree = "<group>"; };
 		F63C529CFE118BC1F7ABAAAA /* DawnPilotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DawnPilotApp.swift; sourceTree = "<group>"; };
 		F6B98512CD54A1CCCCFBE67C /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -85,6 +89,7 @@
 			isa = PBXGroup;
 			children = (
 				25385C6ABF7370F5F15CA377 /* AppSettings.swift */,
+				E7CB53EE611FACEFCB975996 /* CancelledAlarmDate.swift */,
 				4E78FB89C2CD75914FFD8744 /* WeatherModels.swift */,
 			);
 			path = Models;
@@ -139,6 +144,7 @@
 			isa = PBXGroup;
 			children = (
 				CDC67AFE740B4A74442F6340 /* AlarmCoordinator.swift */,
+				88CFBD5684B4C2E6FCB22AB0 /* AlarmDateSchedulingPolicy.swift */,
 				E3F9A5C72AAF8E67B3F28660 /* BackgroundRefreshController.swift */,
 				C4CE18C93F178437D559E39C /* CurrentLocationService.swift */,
 				D3D38B4E2B6614760963169C /* PrecipitationEvaluator.swift */,
@@ -238,9 +244,11 @@
 			buildActionMask = 2147483647;
 			files = (
 				57D980DC543F3178139D4F3E /* AlarmCoordinator.swift in Sources */,
+				2DCCB3B941D6C0EE882ADC01 /* AlarmDateSchedulingPolicy.swift in Sources */,
 				C082FE4690BD3F81A43C7E7D /* AppModel.swift in Sources */,
 				F5A3FED49ADD4DD4942F930E /* AppSettings.swift in Sources */,
 				020A41EB0FB976935DF9A37D /* BackgroundRefreshController.swift in Sources */,
+				8343C0F7B38D1152B0E2C596 /* CancelledAlarmDate.swift in Sources */,
 				24CF5E0BBAE0FAC064056E00 /* ContentView.swift in Sources */,
 				B4858DA16187E142B4B93912 /* CurrentLocationService.swift in Sources */,
 				5B041094B529C8B866368930 /* DawnPilotApp.swift in Sources */,

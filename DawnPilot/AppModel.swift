@@ -5,9 +5,11 @@ final class AppModel: ObservableObject {
     @Published var settings: AppSettings
     @Published private(set) var status: RefreshStatus
     @Published private(set) var records: [ManagedAlarmRecord] = []
+    @Published private(set) var cancelledDates: [CancelledAlarmDate] = []
     @Published private(set) var authorizationText = "读取中"
     @Published private(set) var isWorking = false
     @Published private(set) var isLocating = false
+    @Published private var alarmActionDateKeys: Set<String> = []
     @Published var alertMessage: String?
 
     private let currentLocationService = CurrentLocationService()
@@ -23,7 +25,7 @@ final class AppModel: ObservableObject {
 
     func loadSnapshot() {
         Task {
-            let snapshot = await AlarmCoordinator.shared.snapshot()
+            let snapshot = await AlarmCoordinator.shared.snapshot(settings: settings)
             apply(snapshot)
         }
     }
@@ -46,16 +48,42 @@ final class AppModel: ObservableObject {
     }
 
     func cancelAlarm(_ record: ManagedAlarmRecord) {
+        guard !isMutatingAlarm(record.dateKey) else { return }
+        alarmActionDateKeys.insert(record.dateKey)
         alertMessage = nil
         Task {
+            defer { alarmActionDateKeys.remove(record.dateKey) }
             do {
                 try await AlarmCoordinator.shared.cancelAlarm(dateKey: record.dateKey)
             } catch {
                 alertMessage = error.localizedDescription
             }
-            let snapshot = await AlarmCoordinator.shared.snapshot()
+            let snapshot = await AlarmCoordinator.shared.snapshot(settings: settings)
             apply(snapshot)
         }
+    }
+
+    func restoreAlarm(_ cancelledDate: CancelledAlarmDate) {
+        guard !isMutatingAlarm(cancelledDate.dateKey) else { return }
+        alarmActionDateKeys.insert(cancelledDate.dateKey)
+        alertMessage = nil
+        Task {
+            defer { alarmActionDateKeys.remove(cancelledDate.dateKey) }
+            do {
+                try await AlarmCoordinator.shared.restoreAlarm(
+                    dateKey: cancelledDate.dateKey,
+                    settings: settings
+                )
+            } catch {
+                alertMessage = error.localizedDescription
+            }
+            let snapshot = await AlarmCoordinator.shared.snapshot(settings: settings)
+            apply(snapshot)
+        }
+    }
+
+    func isMutatingAlarm(_ dateKey: String) -> Bool {
+        alarmActionDateKeys.contains(dateKey)
     }
 
     func useCurrentLocation() {
@@ -82,7 +110,7 @@ final class AppModel: ObservableObject {
             } catch {
                 alertMessage = error.localizedDescription
             }
-            let snapshot = await AlarmCoordinator.shared.snapshot()
+            let snapshot = await AlarmCoordinator.shared.snapshot(settings: settings)
             apply(snapshot)
         }
     }
@@ -108,7 +136,7 @@ final class AppModel: ObservableObject {
             } catch {
                 alertMessage = error.localizedDescription
             }
-            let snapshot = await AlarmCoordinator.shared.snapshot()
+            let snapshot = await AlarmCoordinator.shared.snapshot(settings: settings)
             apply(snapshot)
             isWorking = false
         }
@@ -117,6 +145,7 @@ final class AppModel: ObservableObject {
     private func apply(_ snapshot: CoordinatorSnapshot) {
         authorizationText = snapshot.authorizationText
         records = snapshot.records
+        cancelledDates = snapshot.cancelledDates
         status = snapshot.status
     }
 }
