@@ -43,6 +43,7 @@ struct AppSettings: Codable, Equatable, Sendable {
     var bearerToken = ""
     var latitude = 31.2304
     var longitude = 121.4737
+    var locationName: String?
     var timeZoneIdentifier = "Asia/Shanghai"
 
     var rainyAlarmTime = ClockTime(hour: 7, minute: 50)

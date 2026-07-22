@@ -20,8 +20,10 @@ them:
   is best effort only and must never be presented as guaranteed execution.
 - The app maintains a 14-day horizon of one-off fallback alarms so a failed
   weather request or missed automation does not leave the user without an alarm.
-- Location is a fixed, user-editable latitude/longitude. Do not add live location,
-  APNs, holiday calendars, or address search unless explicitly requested.
+- Location is a fixed coordinate captured by a user-triggered, one-time current
+  location request, with manual latitude/longitude as an advanced fallback. Do
+  not add continuous/background location, APNs, holiday calendars, or address
+  search unless explicitly requested.
 - Default rules are rainy `07:50`, unknown/failure `08:00`, clear `08:05`,
   forecast window `07:00..<09:00`, precipitation threshold `40%`, Monday-Friday.
 - The default server base URL may be public, but the Bearer token must remain

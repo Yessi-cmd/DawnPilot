@@ -28,6 +28,8 @@
 	<true/>
 	<key>NSAlarmKitUsageDescription</key>
 	<string>根据天气和你的通勤设置，为工作日安排可靠的起床闹钟。</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>仅在你主动点击时获取一次当前位置，用于自动填写天气查询地点；晨航不会持续跟踪位置。</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>

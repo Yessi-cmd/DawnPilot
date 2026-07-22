@@ -1,4 +1,4 @@
-import AlarmKit
+@preconcurrency import AlarmKit
 import Foundation
 import SwiftUI
 
@@ -11,6 +11,7 @@ struct DawnPilotMetadata: AlarmMetadata {
 struct CoordinatorSnapshot: Sendable {
     let authorizationText: String
     let records: [ManagedAlarmRecord]
+    let cancelledDates: [CancelledAlarmDate]
     let status: RefreshStatus
 }
 
@@ -34,6 +35,24 @@ enum AlarmCoordinatorError: LocalizedError {
     }
 }
 
+enum AlarmRefreshTrigger: Sendable {
+    case scheduled
+    case userInitiated
+
+    func originForTomorrow(
+        isEnabledAlarmDay: Bool,
+        existingOrigin: ManagedAlarmOrigin?
+    ) -> ManagedAlarmOrigin? {
+        if isEnabledAlarmDay {
+            return .automatic
+        }
+        if self == .userInitiated || existingOrigin == .manualOverride {
+            return .manualOverride
+        }
+        return nil
+    }
+}
+
 actor AlarmCoordinator {
     static let shared = AlarmCoordinator()
 
@@ -42,16 +61,20 @@ actor AlarmCoordinator {
     private let alarmManager = AlarmManager.shared
     private let weatherService = WeatherService()
     private var records: [ManagedAlarmRecord]
+    private var cancelledDates: [CancelledAlarmDate]
 
     private init() {
         records = SettingsStore.loadRecords()
+        cancelledDates = SettingsStore.loadCancelledDates()
     }
 
-    func snapshot(now: Date = Date()) -> CoordinatorSnapshot {
+    func snapshot(settings: AppSettings, now: Date = Date()) -> CoordinatorSnapshot {
         pruneExpiredRecords(now: now)
+        pruneExpiredCancelledDates(now: now, calendar: settings.calendar)
         return CoordinatorSnapshot(
             authorizationText: authorizationText(for: alarmManager.authorizationState),
             records: records.sorted { $0.fireDate < $1.fireDate },
+            cancelledDates: cancelledDates.sorted { $0.dateKey < $1.dateKey },
             status: SettingsStore.loadStatus()
         )
     }
@@ -99,19 +122,108 @@ actor AlarmCoordinator {
         return status
     }
 
-    func refreshTomorrow(settings: AppSettings, now: Date = Date()) async throws -> RefreshStatus {
+    func cancelAlarm(dateKey: String, now: Date = Date()) async throws {
+        try requireAuthorization()
+        let existing = records.first { $0.dateKey == dateKey }
+        if let existing {
+            let activeIDs = Set(try alarmManager.alarms.map(\.id))
+            try cancelIfActive(existing.alarmID, activeIDs: activeIDs)
+            records.removeAll { $0.dateKey == dateKey }
+            persistRecords()
+        }
+
+        // AlarmKit cancellation has no suspension point. Once it succeeds, the
+        // persisted date exception makes every later refresh respect the user's
+        // choice instead of treating this as a missing fallback alarm.
+        if !isDateCancelled(dateKey) {
+            cancelledDates.append(CancelledAlarmDate(dateKey: dateKey, cancelledAt: now))
+            persistCancelledDates()
+        }
+        saveCancellationStatus(dateKey: dateKey, now: now)
+    }
+
+    func restoreAlarm(dateKey: String, settings: AppSettings, now: Date = Date()) async throws {
         try validate(settings)
         try requireAuthorization()
-        _ = try await ensureFallbackHorizon(settings: settings, now: now)
+
+        let calendar = settings.calendar
+        pruneExpiredCancelledDates(now: now, calendar: calendar)
+        guard let cancelledDate = cancelledDates.first(where: { $0.dateKey == dateKey }) else {
+            return
+        }
+        guard let day = LocalDateKey.date(from: dateKey, calendar: calendar),
+              day > calendar.startOfDay(for: now),
+              let fallbackDate = settings.fallbackAlarmTime.date(on: day, calendar: calendar) else {
+            throw AlarmCoordinatorError.unableToBuildDate
+        }
+
+        cancelledDates.removeAll { $0.dateKey == dateKey }
+        persistCancelledDates()
+        let origin: ManagedAlarmOrigin = settings.isEnabledAlarmDay(day) ? .automatic : .manualOverride
+        do {
+            guard try await replaceRecord(
+                dateKey: dateKey,
+                fireDate: fallbackDate,
+                kind: .fallback,
+                origin: origin,
+                now: now
+            ) else {
+                return
+            }
+        } catch {
+            cancelledDates.append(cancelledDate)
+            persistCancelledDates()
+            throw error
+        }
+
+        let status = RefreshStatus(
+            outcome: .prepared,
+            message: "已恢复 \(dateKey) 的保底闹钟；下一次更新会按天气调整时间。",
+            alarmDate: fallbackDate,
+            updatedAt: now,
+            forecastFetchedAt: nil,
+            forecastWasStale: false
+        )
+        SettingsStore.saveStatus(status)
+    }
+
+    func refreshTomorrow(
+        settings: AppSettings,
+        now: Date = Date(),
+        trigger: AlarmRefreshTrigger = .scheduled
+    ) async throws -> RefreshStatus {
+        try validate(settings)
+        try requireAuthorization()
 
         let calendar = settings.calendar
         guard let tomorrow = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now)) else {
             throw AlarmCoordinatorError.unableToBuildDate
         }
-        guard settings.isEnabledAlarmDay(tomorrow) else {
+        let dateKey = LocalDateKey.make(tomorrow, calendar: calendar)
+
+        _ = try await ensureFallbackHorizon(
+            settings: settings,
+            now: now,
+            preservingDateKey: trigger == .userInitiated ? dateKey : nil
+        )
+        let schedulingDecision = AlarmDateSchedulingPolicy.decision(
+            dateKey: dateKey,
+            isEnabledAlarmDay: settings.isEnabledAlarmDay(tomorrow),
+            cancelledDateKeys: cancelledDateKeys
+        )
+        if schedulingDecision == .userCancelled {
+            return saveCancellationStatus(dateKey: dateKey, now: now)
+        }
+
+        let isEnabledAlarmDay = settings.isEnabledAlarmDay(tomorrow)
+        let existingOrigin = records.first { $0.dateKey == dateKey }?.origin
+        guard let origin = trigger.originForTomorrow(
+            isEnabledAlarmDay: isEnabledAlarmDay,
+            existingOrigin: existingOrigin
+        ) else {
             let status = RefreshStatus(
                 outcome: .skipped,
-                message: "明天不是已启用的闹钟日，不安排闹钟。",
+                message: "明天不是常规闹钟日；如需临时闹钟，请在晨航中点击“临时设明日闹钟”。",
                 alarmDate: nil,
                 updatedAt: now,
                 forecastFetchedAt: nil,
@@ -121,7 +233,33 @@ actor AlarmCoordinator {
             return status
         }
 
-        let dateKey = makeDateKey(tomorrow, calendar: calendar)
+        if let existing = records.first(where: { $0.dateKey == dateKey }) {
+            if existing.origin != origin {
+                guard try await replaceRecord(
+                    dateKey: dateKey,
+                    fireDate: existing.fireDate,
+                    kind: existing.kind,
+                    origin: origin,
+                    now: now
+                ) else {
+                    return saveCancellationStatus(dateKey: dateKey, now: now)
+                }
+            }
+        } else {
+            guard let fallbackDate = settings.fallbackAlarmTime.date(on: tomorrow, calendar: calendar) else {
+                throw AlarmCoordinatorError.unableToBuildDate
+            }
+            guard try await replaceRecord(
+                dateKey: dateKey,
+                fireDate: fallbackDate,
+                kind: .fallback,
+                origin: origin,
+                now: now
+            ) else {
+                return saveCancellationStatus(dateKey: dateKey, now: now)
+            }
+        }
+
         do {
             let forecast = try await weatherService.fetchForecast(settings: settings)
             let evaluation = try PrecipitationEvaluator.evaluate(
@@ -133,16 +271,28 @@ actor AlarmCoordinator {
             guard let fireDate = settings.alarmTime(for: evaluation.kind).date(on: tomorrow, calendar: calendar) else {
                 throw AlarmCoordinatorError.unableToBuildDate
             }
-            try await replaceRecord(
+            guard !isDateCancelled(dateKey) else {
+                return saveCancellationStatus(dateKey: dateKey, now: now)
+            }
+            guard try await replaceRecord(
                 dateKey: dateKey,
                 fireDate: fireDate,
                 kind: evaluation.kind,
+                origin: origin,
                 now: now
-            )
+            ) else {
+                return saveCancellationStatus(dateKey: dateKey, now: now)
+            }
 
+            let message: String
+            if origin == .manualOverride {
+                message = "明天不是常规闹钟日，已临时设置：\(evaluation.summary)，闹钟为 \(settings.alarmTime(for: evaluation.kind).displayText)。"
+            } else {
+                message = "\(evaluation.summary)，闹钟设为 \(settings.alarmTime(for: evaluation.kind).displayText)。"
+            }
             let status = RefreshStatus(
                 outcome: evaluation.kind == .rainy ? .rainy : .clear,
-                message: "\(evaluation.summary)，闹钟设为 \(settings.alarmTime(for: evaluation.kind).displayText)。",
+                message: message,
                 alarmDate: fireDate,
                 updatedAt: now,
                 forecastFetchedAt: forecast.fetchedAt,
@@ -151,6 +301,9 @@ actor AlarmCoordinator {
             SettingsStore.saveStatus(status)
             return status
         } catch {
+            if isDateCancelled(dateKey) {
+                return saveCancellationStatus(dateKey: dateKey, now: now)
+            }
             let existing = records.first { $0.dateKey == dateKey }
             let retainedTime = existing?.fireDate ?? settings.fallbackAlarmTime.date(on: tomorrow, calendar: calendar)
             let retainedDescription: String
@@ -159,9 +312,10 @@ actor AlarmCoordinator {
             } else {
                 retainedDescription = "保留默认保底闹钟"
             }
+            let temporaryDescription = origin == .manualOverride ? "临时闹钟已保留；" : ""
             let status = RefreshStatus(
                 outcome: .fallback,
-                message: "天气更新失败：\(error.localizedDescription)；\(retainedDescription)。",
+                message: "\(temporaryDescription)天气更新失败：\(error.localizedDescription)；\(retainedDescription)。",
                 alarmDate: retainedTime,
                 updatedAt: now,
                 forecastFetchedAt: nil,
@@ -172,20 +326,43 @@ actor AlarmCoordinator {
         }
     }
 
-    private func ensureFallbackHorizon(settings: AppSettings, now: Date) async throws -> Int {
+    private func ensureFallbackHorizon(
+        settings: AppSettings,
+        now: Date,
+        preservingDateKey: String? = nil
+    ) async throws -> Int {
         let activeIDs = Set(try alarmManager.alarms.map(\.id))
         pruneExpiredRecords(now: now, activeIDs: activeIDs)
 
         let calendar = settings.calendar
+        pruneExpiredCancelledDates(now: now, calendar: calendar)
         let start = calendar.startOfDay(for: now)
         for offset in 1...AppSettings.fallbackHorizonDays {
             guard let day = calendar.date(byAdding: .day, value: offset, to: start) else {
                 throw AlarmCoordinatorError.unableToBuildDate
             }
-            let dateKey = makeDateKey(day, calendar: calendar)
+            let dateKey = LocalDateKey.make(day, calendar: calendar)
 
-            guard settings.isEnabledAlarmDay(day) else {
+            let decision = AlarmDateSchedulingPolicy.decision(
+                dateKey: dateKey,
+                isEnabledAlarmDay: settings.isEnabledAlarmDay(day),
+                cancelledDateKeys: cancelledDateKeys
+            )
+            if decision == .userCancelled {
                 if let existing = records.first(where: { $0.dateKey == dateKey }) {
+                    try cancelIfActive(existing.alarmID, activeIDs: activeIDs)
+                    records.removeAll { $0.dateKey == dateKey }
+                    persistRecords()
+                }
+                continue
+            }
+
+            guard decision == .schedule else {
+                if let existing = records.first(where: { $0.dateKey == dateKey }) {
+                    if (existing.origin == .manualOverride || dateKey == preservingDateKey),
+                       activeIDs.contains(existing.alarmID) {
+                        continue
+                    }
                     try cancelIfActive(existing.alarmID, activeIDs: activeIDs)
                     records.removeAll { $0.dateKey == dateKey }
                     persistRecords()
@@ -202,12 +379,12 @@ actor AlarmCoordinator {
                 if abs(existing.fireDate.timeIntervalSince(expectedDate)) < 1 {
                     continue
                 }
-                try await replaceRecord(
+                _ = try await replaceRecord(
                     dateKey: dateKey,
                     fireDate: expectedDate,
                     kind: existing.kind,
-                    now: now,
-                    knownActiveIDs: activeIDs
+                    origin: existing.origin,
+                    now: now
                 )
                 continue
             }
@@ -216,12 +393,12 @@ actor AlarmCoordinator {
             guard let fallbackDate = settings.fallbackAlarmTime.date(on: day, calendar: calendar) else {
                 throw AlarmCoordinatorError.unableToBuildDate
             }
-            try await replaceRecord(
+            _ = try await replaceRecord(
                 dateKey: dateKey,
                 fireDate: fallbackDate,
                 kind: .fallback,
-                now: now,
-                knownActiveIDs: activeIDs
+                origin: .automatic,
+                now: now
             )
         }
         persistRecords()
@@ -232,8 +409,20 @@ actor AlarmCoordinator {
         let activeIDs = Set(try alarmManager.alarms.map(\.id))
         let calendar = settings.calendar
         for record in records where record.fireDate > now {
-            guard let day = calendar.date(from: calendar.dateComponents([.year, .month, .day], from: record.fireDate)),
-                  settings.isEnabledAlarmDay(day),
+            if isDateCancelled(record.dateKey) {
+                try cancelIfActive(record.alarmID, activeIDs: activeIDs)
+                records.removeAll { $0.dateKey == record.dateKey }
+                persistRecords()
+                continue
+            }
+            guard let day = calendar.date(from: calendar.dateComponents([.year, .month, .day], from: record.fireDate)) else {
+                try cancelIfActive(record.alarmID, activeIDs: activeIDs)
+                records.removeAll { $0.dateKey == record.dateKey }
+                persistRecords()
+                continue
+            }
+            let shouldKeep = settings.isEnabledAlarmDay(day) || record.origin == .manualOverride
+            guard shouldKeep,
                   let fallbackDate = settings.fallbackAlarmTime.date(on: day, calendar: calendar) else {
                 try cancelIfActive(record.alarmID, activeIDs: activeIDs)
                 records.removeAll { $0.dateKey == record.dateKey }
@@ -245,12 +434,12 @@ actor AlarmCoordinator {
                activeIDs.contains(record.alarmID) {
                 continue
             }
-            try await replaceRecord(
+            _ = try await replaceRecord(
                 dateKey: record.dateKey,
                 fireDate: fallbackDate,
                 kind: .fallback,
-                now: now,
-                knownActiveIDs: activeIDs
+                origin: record.origin,
+                now: now
             )
         }
     }
@@ -259,10 +448,9 @@ actor AlarmCoordinator {
         dateKey: String,
         fireDate: Date,
         kind: ManagedAlarmKind,
-        now: Date,
-        knownActiveIDs: Set<UUID>? = nil
-    ) async throws {
-        let oldRecord = records.first { $0.dateKey == dateKey }
+        origin: ManagedAlarmOrigin,
+        now: Date
+    ) async throws -> Bool {
         let newID = UUID()
         let metadata = DawnPilotMetadata(dateKey: dateKey, kind: kind, createdAt: now)
         let attributes = AlarmAttributes(
@@ -276,9 +464,19 @@ actor AlarmCoordinator {
         )
 
         _ = try await alarmManager.schedule(id: newID, configuration: configuration)
+        // A cancellation can interleave while AlarmKit schedules. Clean up the
+        // new system alarm instead of recreating a user-cancelled date.
+        guard !isDateCancelled(dateKey) else {
+            try? alarmManager.cancel(id: newID)
+            return false
+        }
+
+        // Re-read after the suspension point, then obtain a fresh active-ID
+        // snapshot so a concurrent replacement cannot leave an orphan alarm.
+        let oldRecord = records.first { $0.dateKey == dateKey }
         if let oldRecord {
             do {
-                let activeIDs = try knownActiveIDs ?? Set(alarmManager.alarms.map(\.id))
+                let activeIDs = try Set(alarmManager.alarms.map(\.id))
                 try cancelIfActive(oldRecord.alarmID, activeIDs: activeIDs)
             } catch {
                 try? alarmManager.cancel(id: newID)
@@ -292,9 +490,11 @@ actor AlarmCoordinator {
             alarmID: newID,
             fireDate: fireDate,
             kind: kind,
+            origin: origin,
             updatedAt: now
         ))
         persistRecords()
+        return true
     }
 
     private func cancelIfActive(_ id: UUID, activeIDs: Set<UUID>) throws {
@@ -347,18 +547,43 @@ actor AlarmCoordinator {
         SettingsStore.saveRecords(records.sorted { $0.fireDate < $1.fireDate })
     }
 
-    private func nextRecord(after date: Date) -> ManagedAlarmRecord? {
-        records.filter { $0.fireDate > date }.min { $0.fireDate < $1.fireDate }
+    private var cancelledDateKeys: Set<String> {
+        Set(cancelledDates.map(\.dateKey))
     }
 
-    private func makeDateKey(_ date: Date, calendar: Calendar) -> String {
-        let components = calendar.dateComponents([.year, .month, .day], from: date)
-        return String(
-            format: "%04d-%02d-%02d",
-            components.year ?? 0,
-            components.month ?? 0,
-            components.day ?? 0
+    private func isDateCancelled(_ dateKey: String) -> Bool {
+        cancelledDates.contains { $0.dateKey == dateKey }
+    }
+
+    private func pruneExpiredCancelledDates(now: Date, calendar: Calendar) {
+        let todayKey = LocalDateKey.make(calendar.startOfDay(for: now), calendar: calendar)
+        let countBeforePruning = cancelledDates.count
+        cancelledDates.removeAll { $0.dateKey <= todayKey }
+        if cancelledDates.count != countBeforePruning {
+            persistCancelledDates()
+        }
+    }
+
+    private func persistCancelledDates() {
+        SettingsStore.saveCancelledDates(cancelledDates.sorted { $0.dateKey < $1.dateKey })
+    }
+
+    @discardableResult
+    private func saveCancellationStatus(dateKey: String, now: Date) -> RefreshStatus {
+        let status = RefreshStatus(
+            outcome: .skipped,
+            message: "已取消 \(dateKey) 的闹钟；自动天气刷新不会恢复它。",
+            alarmDate: nil,
+            updatedAt: now,
+            forecastFetchedAt: nil,
+            forecastWasStale: false
         )
+        SettingsStore.saveStatus(status)
+        return status
+    }
+
+    private func nextRecord(after date: Date) -> ManagedAlarmRecord? {
+        records.filter { $0.fireDate > date }.min { $0.fireDate < $1.fireDate }
     }
 
     private func authorizationText(for state: AlarmManager.AuthorizationState) -> String {
