@@ -1,15 +1,33 @@
 import Foundation
 
 enum PrecipitationEvaluationError: LocalizedError, Equatable {
+    case forecastFromFuture
     case forecastTooOld
+    case invalidForecastTimeline
+    case invalidTargetWindow
     case missingTargetHours
+    case duplicateTargetHours
+    case missingTargetSignals
+    case invalidTargetSignals(String)
 
     var errorDescription: String? {
         switch self {
+        case .forecastFromFuture:
+            "服务器中的天气数据时间晚于当前时间。"
         case .forecastTooOld:
             "服务器中的天气数据已超过 6 小时。"
+        case .invalidForecastTimeline:
+            "天气数据的获取与返回时间顺序无效。"
+        case .invalidTargetWindow:
+            "无法生成目标日期的天气判断窗口。"
         case .missingTargetHours:
             "天气数据未覆盖明日通勤时段。"
+        case .duplicateTargetHours:
+            "天气数据包含重复的通勤时段小时。"
+        case .missingTargetSignals:
+            "通勤时段天气数据缺少可用的降水信号。"
+        case .invalidTargetSignals(let message):
+            "通勤时段天气数据无效：\(message)"
         }
     }
 }
@@ -21,26 +39,42 @@ enum PrecipitationEvaluator {
         settings: AppSettings,
         now: Date = Date()
     ) throws -> WeatherEvaluation {
-        guard now.timeIntervalSince(forecast.fetchedAt) <= AppSettings.maximumForecastAge else {
+        let forecastAge = now.timeIntervalSince(forecast.fetchedAt)
+        guard forecastAge >= -AppSettings.maximumForecastClockSkew else {
+            throw PrecipitationEvaluationError.forecastFromFuture
+        }
+        guard forecastAge <= AppSettings.maximumForecastAge else {
             throw PrecipitationEvaluationError.forecastTooOld
+        }
+        guard forecast.fetchedAt <= forecast.servedAt,
+              forecast.servedAt <= now.addingTimeInterval(AppSettings.maximumForecastClockSkew) else {
+            throw PrecipitationEvaluationError.invalidForecastTimeline
         }
 
         let calendar = settings.calendar
-        let targetComponents = calendar.dateComponents([.year, .month, .day], from: targetDate)
-        let matchingHours = forecast.hourly.filter { hour in
-            let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: hour.time)
-            guard components.year == targetComponents.year,
-                  components.month == targetComponents.month,
-                  components.day == targetComponents.day else {
-                return false
-            }
-            let minute = (components.hour ?? 0) * 60 + (components.minute ?? 0)
-            return minute >= settings.forecastWindowStart.minutesFromMidnight
-                && minute < settings.forecastWindowEnd.minutesFromMidnight
-        }
+        let expectedHours = try expectedTargetHours(
+            targetDate: targetDate,
+            settings: settings,
+            calendar: calendar
+        )
+        let rowsByTime = Dictionary(grouping: forecast.hourly, by: \.time)
+        var matchingHours: [ForecastHour] = []
+        matchingHours.reserveCapacity(expectedHours.count)
 
-        guard !matchingHours.isEmpty else {
-            throw PrecipitationEvaluationError.missingTargetHours
+        for expectedHour in expectedHours {
+            guard let rows = rowsByTime[expectedHour] else {
+                throw PrecipitationEvaluationError.missingTargetHours
+            }
+            guard rows.count == 1, let hour = rows.first else {
+                throw PrecipitationEvaluationError.duplicateTargetHours
+            }
+            if let validationError = hour.weatherSignalValidationError {
+                throw PrecipitationEvaluationError.invalidTargetSignals(validationError)
+            }
+            guard hour.hasWeatherSignal else {
+                throw PrecipitationEvaluationError.missingTargetSignals
+            }
+            matchingHours.append(hour)
         }
 
         let maximumProbability = matchingHours.compactMap(\.precipitationProbability).max() ?? 0
@@ -67,6 +101,38 @@ enum PrecipitationEvaluator {
             maximumPrecipitationMM: maximumPrecipitation,
             matchingHourCount: matchingHours.count
         )
+    }
+
+    private static func expectedTargetHours(
+        targetDate: Date,
+        settings: AppSettings,
+        calendar: Calendar
+    ) throws -> [Date] {
+        let dayStart = calendar.startOfDay(for: targetDate)
+        guard let nextDay = calendar.date(byAdding: .day, value: 1, to: dayStart),
+              let windowStart = settings.forecastWindowStart.date(on: dayStart, calendar: calendar),
+              let windowEnd = settings.forecastWindowEnd.date(on: dayStart, calendar: calendar),
+              windowStart < windowEnd else {
+            throw PrecipitationEvaluationError.invalidTargetWindow
+        }
+
+        var result: [Date] = []
+        var bucketStart = dayStart
+        while bucketStart < nextDay {
+            guard let bucketEnd = calendar.date(byAdding: .hour, value: 1, to: bucketStart),
+                  bucketEnd > bucketStart else {
+                throw PrecipitationEvaluationError.invalidTargetWindow
+            }
+            if bucketStart < windowEnd, bucketEnd > windowStart {
+                result.append(bucketStart)
+            }
+            bucketStart = bucketEnd
+        }
+
+        guard !result.isEmpty else {
+            throw PrecipitationEvaluationError.invalidTargetWindow
+        }
+        return result
     }
 
     // WMO weather codes for drizzle, rain, snow, showers and thunderstorms.

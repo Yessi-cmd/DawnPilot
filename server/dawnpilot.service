@@ -14,11 +14,25 @@ UMask=0077
 ExecStart=/usr/bin/python3 /opt/dawnpilot/dawnpilot_server.py
 Restart=on-failure
 RestartSec=5
+StateDirectory=dawnpilot
+StateDirectoryMode=0700
 NoNewPrivileges=true
 PrivateTmp=true
+PrivateDevices=true
 ProtectHome=true
 ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
 ReadWritePaths=/var/lib/dawnpilot
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+AmbientCapabilities=
+LockPersonality=true
 MemoryMax=200M
 
 [Install]

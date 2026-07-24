@@ -42,6 +42,40 @@ struct ForecastHour: Decodable, Equatable, Sendable {
         case snowfallCM = "snowfall_cm"
         case weatherCode = "weather_code"
     }
+
+    var hasWeatherSignal: Bool {
+        precipitationProbability != nil
+            || precipitationMM != nil
+            || rainMM != nil
+            || showersMM != nil
+            || snowfallCM != nil
+            || weatherCode != nil
+    }
+
+    var weatherSignalValidationError: String? {
+        if let precipitationProbability,
+           !precipitationProbability.isFinite
+            || !(0...100).contains(precipitationProbability) {
+            return "降水概率必须在 0 到 100 之间。"
+        }
+
+        let measurements = [
+            ("总降水量", precipitationMM),
+            ("降雨量", rainMM),
+            ("阵雨量", showersMM),
+            ("降雪量", snowfallCM)
+        ]
+        for (name, value) in measurements {
+            if let value, !value.isFinite || value < 0 {
+                return "\(name)不能为负数或非有限值。"
+            }
+        }
+
+        if let weatherCode, !(0...99).contains(weatherCode) {
+            return "WMO 天气代码超出有效范围。"
+        }
+        return nil
+    }
 }
 
 enum ManagedAlarmKind: String, Codable, Sendable {
@@ -83,6 +117,109 @@ struct ManagedAlarmRecord: Codable, Equatable, Identifiable, Sendable {
     let fireDate: Date
     let kind: ManagedAlarmKind
     let updatedAt: Date
+}
+
+enum PendingAlarmReplacementPhase: String, Codable, Sendable {
+    case prepared
+    case newAlarmScheduled
+    case recordCommitted
+}
+
+struct PendingAlarmReplacement: Codable, Equatable, Sendable {
+    let oldRecord: ManagedAlarmRecord?
+    let newRecord: ManagedAlarmRecord
+    var phase: PendingAlarmReplacementPhase
+}
+
+enum BulkAlarmRebuildPhase: String, Codable, Sendable {
+    case staging
+    case staged
+    case settingsCommitted
+    case finalizing
+}
+
+struct PendingBulkAlarmRebuild: Codable, Equatable, Sendable {
+    let transactionID: UUID
+    var phase: BulkAlarmRebuildPhase
+    let targetSettingsRevision: UUID
+    let targetCredentialOrigin: String
+    var desiredDateKeys: [String]
+    var desiredRecords: [ManagedAlarmRecord]
+    var newlyScheduledRecords: [ManagedAlarmRecord]
+    var protectedCurrentDayIDs: [UUID]
+    let originalRecords: [ManagedAlarmRecord]
+    let createdAt: Date
+
+    init(
+        transactionID: UUID,
+        phase: BulkAlarmRebuildPhase,
+        targetSettingsRevision: UUID,
+        targetCredentialOrigin: String,
+        desiredDateKeys: [String],
+        desiredRecords: [ManagedAlarmRecord],
+        newlyScheduledRecords: [ManagedAlarmRecord],
+        protectedCurrentDayIDs: [UUID],
+        originalRecords: [ManagedAlarmRecord],
+        createdAt: Date
+    ) {
+        self.transactionID = transactionID
+        self.phase = phase
+        self.targetSettingsRevision = targetSettingsRevision
+        self.targetCredentialOrigin = targetCredentialOrigin
+        self.desiredDateKeys = desiredDateKeys
+        self.desiredRecords = desiredRecords
+        self.newlyScheduledRecords = newlyScheduledRecords
+        self.protectedCurrentDayIDs = protectedCurrentDayIDs
+        self.originalRecords = originalRecords
+        self.createdAt = createdAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case transactionID
+        case phase
+        case targetSettingsRevision
+        case targetCredentialOrigin
+        case desiredDateKeys
+        case desiredRecords
+        case newlyScheduledRecords
+        case protectedCurrentDayIDs
+        case originalRecords
+        case createdAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        transactionID = try container.decode(UUID.self, forKey: .transactionID)
+        phase = try container.decode(BulkAlarmRebuildPhase.self, forKey: .phase)
+        targetSettingsRevision = try container.decode(
+            UUID.self,
+            forKey: .targetSettingsRevision
+        )
+        targetCredentialOrigin = try container.decode(
+            String.self,
+            forKey: .targetCredentialOrigin
+        )
+        desiredDateKeys = try container.decode([String].self, forKey: .desiredDateKeys)
+        desiredRecords = try container.decode(
+            [ManagedAlarmRecord].self,
+            forKey: .desiredRecords
+        )
+        newlyScheduledRecords = try container.decode(
+            [ManagedAlarmRecord].self,
+            forKey: .newlyScheduledRecords
+        )
+        protectedCurrentDayIDs = try container.decode(
+            [UUID].self,
+            forKey: .protectedCurrentDayIDs
+        )
+        // Journals written by the first development build did not include this
+        // rollback proof. An empty value forces conservative retention.
+        originalRecords = try container.decodeIfPresent(
+            [ManagedAlarmRecord].self,
+            forKey: .originalRecords
+        ) ?? []
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+    }
 }
 
 enum RefreshOutcome: String, Codable, Sendable {

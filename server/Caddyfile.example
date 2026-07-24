@@ -1,3 +1,5 @@
+# Merge this handle_path block into the existing HTTPS site block.
+# Do not replace unrelated routes for the domain.
 example.com {
     handle_path /dawnpilot/* {
         encode zstd gzip

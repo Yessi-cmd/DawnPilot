@@ -7,10 +7,11 @@ options:
   createIntermediateGroups: true
 settings:
   base:
-    SWIFT_VERSION: "5.9"
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
     GENERATE_INFOPLIST_FILE: NO
     MARKETING_VERSION: "0.1.0"
-    CURRENT_PROJECT_VERSION: 1
+    CURRENT_PROJECT_VERSION: 3
 targets:
   DawnPilot:
     type: application
@@ -51,3 +52,6 @@ targets:
       - path: DawnPilotTests
     dependencies:
       - target: DawnPilot
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES

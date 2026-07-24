@@ -12,8 +12,8 @@
 - 降水概率阈值：40%
 - 周一至周五启用
 
-以上内容均可在 App 中修改。固定地点默认只是上海示例坐标，安装后必须改成
-自己的通勤地点。
+以上内容均可在 App 中修改。固定地点默认只是上海示例坐标；安装后请改成
+自己的通勤地点，或在确认确实适用时显式确认该示例位置。
 
 ## 工作方式
 
@@ -69,12 +69,14 @@ xcodebuild test \
 脚本会全新编译未签名的 arm64 Release 真机版本，检查 IPA 结构并生成
 `build/DawnPilot.ipa`。该文件不包含 provisioning profile 或开发签名，交给
 AltStore 安装时使用你的 Apple ID 重签。构建产物和 DerivedData 均已从 Git 排除。
+如果 canonical IPA 已存在，新 build number 必须严格递增；只有在明确批准替换后，
+才可临时设置 `DAWNPILOT_ALLOW_NONINCREASING_BUILD=true` 覆盖这项保护。
 
 ## 首次安装
 
 1. 按 [VPS 部署说明](server/README.md)部署服务，并准备 HTTPS 地址和随机令牌。
 2. App 已预填当前服务地址；在“地点与规则设置”中填写令牌、固定经纬度和时区。
-3. 点“授权并创建保底闹钟”，同意 AlarmKit 权限。
+3. 点“授权并创建 14 天保底闹钟”，同意 AlarmKit 权限。
 4. 点“立即更新明日闹钟”，确认天气链路工作正常。
 5. 打开“快捷指令”→“自动化”，创建每天 22:30 的时间自动化。
 6. 添加“更新明日闹钟”动作，选择立即运行，并关闭运行前询问。
@@ -85,8 +87,9 @@ AltStore 安装时使用你的 Apple ID 重签。构建产物和 DerivedData 均
 
 - `GET /healthz`：健康状态，无需令牌。
 - `GET /v1/forecast`：规范化小时预报，需要 Bearer Token。
-- 15 分钟请求缓存与 30 分钟后台刷新。
-- 上游失败时返回持久化的最后一份成功数据，并标记 `stale: true`。
+- 最多缓存 32 个最近使用地点，15 分钟请求缓存与 30 分钟后台刷新。
+- 过期数据会立即以 `stale: true` 返回，并在后台做单航班刷新和失败退避。
+- 只有字段完整、时间有序且数值有效的 Forecast v1 数据才会替换最后成功缓存。
 
 部署、systemd 与 Caddy 示例见 [server/README.md](server/README.md)。
 
