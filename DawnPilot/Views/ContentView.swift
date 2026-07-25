@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     enum Route: Hashable {
         case settings
+        case automation
     }
 
     @ObservedObject var model: AppModel
@@ -14,6 +15,8 @@ struct ContentView: View {
                     switch route {
                     case .settings:
                         SettingsView(model: model)
+                    case .automation:
+                        AutomationGuideView()
                     }
                 }
         }
