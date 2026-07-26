@@ -1,7 +1,7 @@
 import Foundation
 
 struct CoordinatorSnapshot: Sendable {
-    let authorizationText: String
+    let authorization: AlarmAuthorization
     let records: [ManagedAlarmRecord]
     let status: RefreshStatus
     let alarmsVerified: Bool
@@ -47,6 +47,7 @@ actor AlarmCoordinator {
     private var pendingReplacement: PendingAlarmReplacement?
     private var pendingBulkRebuild: PendingBulkAlarmRebuild?
     private var persistenceError: SettingsStoreError?
+    private var operationTail: Task<Void, Never>?
 
     init(
         alarmDriver: any AlarmScheduling = AlarmKitAlarmDriver(),
@@ -89,7 +90,83 @@ actor AlarmCoordinator {
         }
     }
 
+    // The actor is reentrant: every internal await is a point where another
+    // entry point (UI snapshot, App Intent, background refresh) could interleave
+    // and misread an in-flight transaction journal as crash debris. Every public
+    // operation therefore runs strictly one after another in arrival order.
     func snapshot(now: Date = .now) async -> CoordinatorSnapshot {
+        await runSerializedNonThrowing {
+            await self.performSnapshot(now: now)
+        }
+    }
+
+    func authorizeAndPrepare(
+        settings: AppSettings,
+        now: Date = .now
+    ) async throws -> RefreshStatus {
+        try await runSerialized {
+            try await self.performAuthorizeAndPrepare(settings: settings, now: now)
+        }
+    }
+
+    func rebuildFallbacks(
+        settings: AppSettings,
+        requestAuthorizationIfNeeded: Bool = false,
+        now: Date = .now
+    ) async throws -> RefreshStatus {
+        try await runSerialized {
+            try await self.performRebuildFallbacks(
+                settings: settings,
+                requestAuthorizationIfNeeded: requestAuthorizationIfNeeded,
+                now: now
+            )
+        }
+    }
+
+    func refreshTomorrow(
+        settings: AppSettings,
+        now: Date = .now
+    ) async throws -> RefreshStatus {
+        try await runSerialized {
+            try await self.performRefreshTomorrow(settings: settings, now: now)
+        }
+    }
+
+    private func runSerialized<T: Sendable>(
+        _ operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        // Reading the tail, creating the successor, and replacing the tail happen
+        // with no await in between, so enqueueing is atomic under reentrancy.
+        let previous = operationTail
+        let current = Task {
+            await previous?.value
+            return try await operation()
+        }
+        operationTail = Task { _ = try? await current.value }
+        return try await withTaskCancellationHandler {
+            try await current.value
+        } onCancel: {
+            current.cancel()
+        }
+    }
+
+    private func runSerializedNonThrowing<T: Sendable>(
+        _ operation: @escaping @Sendable () async -> T
+    ) async -> T {
+        let previous = operationTail
+        let current = Task {
+            await previous?.value
+            return await operation()
+        }
+        operationTail = Task { _ = await current.value }
+        return await withTaskCancellationHandler {
+            await current.value
+        } onCancel: {
+            current.cancel()
+        }
+    }
+
+    private func performSnapshot(now: Date) async -> CoordinatorSnapshot {
         let authorization = await alarmDriver.authorizationState()
         var alarmsVerified = false
         if authorization == .authorized {
@@ -105,16 +182,16 @@ actor AlarmCoordinator {
             }
         }
         return CoordinatorSnapshot(
-            authorizationText: authorizationText(for: authorization),
+            authorization: authorization,
             records: records.sorted { $0.fireDate < $1.fireDate },
             status: SettingsStore.loadStatus(defaults: defaults),
             alarmsVerified: alarmsVerified
         )
     }
 
-    func authorizeAndPrepare(
+    private func performAuthorizeAndPrepare(
         settings: AppSettings,
-        now: Date = .now
+        now: Date
     ) async throws -> RefreshStatus {
         try validate(settings)
         let state: AlarmAuthorization
@@ -141,10 +218,10 @@ actor AlarmCoordinator {
         return status
     }
 
-    func rebuildFallbacks(
+    private func performRebuildFallbacks(
         settings: AppSettings,
-        requestAuthorizationIfNeeded: Bool = false,
-        now: Date = .now
+        requestAuthorizationIfNeeded: Bool,
+        now: Date
     ) async throws -> RefreshStatus {
         var targetSettings = settings
         targetSettings.settingsRevision = UUID()
@@ -235,9 +312,9 @@ actor AlarmCoordinator {
         return status
     }
 
-    func refreshTomorrow(
+    private func performRefreshTomorrow(
         settings: AppSettings,
-        now: Date = .now
+        now: Date
     ) async throws -> RefreshStatus {
         try validate(settings)
         try await requireAuthorization()
@@ -1651,14 +1728,6 @@ actor AlarmCoordinator {
             return lhs.fireDate < rhs.fireDate
         }
         return lhs.alarmID.uuidString < rhs.alarmID.uuidString
-    }
-
-    private func authorizationText(for state: AlarmAuthorization) -> String {
-        switch state {
-        case .notDetermined: "尚未授权"
-        case .denied: "已拒绝"
-        case .authorized: "已授权"
-        }
     }
 
     private func saveFailureStatus(message: String, now: Date) {

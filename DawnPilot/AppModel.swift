@@ -12,7 +12,7 @@ final class AppModel: ObservableObject {
     @Published var settings: AppSettings
     @Published private(set) var status: RefreshStatus
     @Published private(set) var records: [ManagedAlarmRecord] = []
-    @Published private(set) var authorizationText = "读取中"
+    @Published private(set) var authorization: AlarmAuthorization?
     @Published private(set) var isWorking = false
     @Published private(set) var snapshotState: SnapshotState = .loading
     @Published private(set) var alarmVerificationState: AlarmVerificationState = .loading
@@ -32,7 +32,16 @@ final class AppModel: ObservableObject {
     }
 
     var isAuthorized: Bool {
-        authorizationText == "已授权"
+        authorization == .authorized
+    }
+
+    var authorizationText: String {
+        switch authorization {
+        case .none: "读取中"
+        case .notDetermined: "尚未授权"
+        case .denied: "已拒绝"
+        case .authorized: "已授权"
+        }
     }
 
     var needsWeatherConfiguration: Bool {
@@ -353,7 +362,7 @@ final class AppModel: ObservableObject {
     }
 
     private func apply(_ snapshot: CoordinatorSnapshot) {
-        authorizationText = snapshot.authorizationText
+        authorization = snapshot.authorization
         records = snapshot.records
         status = snapshot.status
         alarmVerificationState = snapshot.alarmsVerified

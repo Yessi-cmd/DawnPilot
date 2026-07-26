@@ -65,7 +65,9 @@ struct WeatherService: Sendable {
         }
 
         var request = URLRequest(url: url)
-        request.timeoutInterval = 20
+        // Nightly background refresh tolerates latency; leave headroom above the
+        // server's single-flight wait so a slow upstream can still answer.
+        request.timeoutInterval = 30
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if !settings.bearerToken.isEmpty {
             request.setValue("Bearer \(settings.bearerToken)", forHTTPHeaderField: "Authorization")
@@ -85,11 +87,9 @@ struct WeatherService: Sendable {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         do {
-            let forecast = try decoder.decode(ServerForecast.self, from: data)
-            try Self.validate(forecast, settings: settings, now: .now)
-            return forecast
-        } catch let error as WeatherServiceError {
-            throw error
+            // Returns the decoded payload as-is; the caller validates it with an
+            // injectable clock via `WeatherService.validate`.
+            return try decoder.decode(ServerForecast.self, from: data)
         } catch {
             throw WeatherServiceError.invalidServerResponse
         }
