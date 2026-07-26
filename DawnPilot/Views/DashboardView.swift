@@ -13,8 +13,8 @@ struct DashboardView: View {
                 .ignoresSafeArea()
 
             ScrollView {
-                LazyVStack(spacing: 12) {
-                    DashboardHeaderView()
+                VStack(spacing: 12) {
+                    DashboardHeaderView(settings: model.settings)
 
                     AlarmHeroView(
                         record: model.nextRecord,
@@ -41,6 +41,7 @@ struct DashboardView: View {
 
                     DashboardProtectionCard(
                         records: model.records,
+                        settings: model.settings,
                         isAuthorized: model.isAuthorized,
                         isWorking: model.isWorking,
                         repairAction: model.authorizeAndPrepare,
@@ -51,6 +52,7 @@ struct DashboardView: View {
                         status: model.status,
                         statusSummary: model.statusSummary,
                         authorizationText: model.authorizationText,
+                        isAuthorized: model.isAuthorized,
                         verificationState: model.alarmVerificationState,
                         settings: model.settings,
                         scene: scene
@@ -75,14 +77,27 @@ struct DashboardView: View {
 }
 
 private struct DashboardHeaderView: View {
+    let settings: AppSettings
+
+    private var needsLocationConfirmation: Bool {
+        settings.isUsingExampleLocation && !settings.exampleLocationConfirmed
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 5) {
                 Text("晨航")
                     .font(.system(.title, design: .rounded, weight: .bold))
-                Label("固定天气位置", systemImage: "location.fill")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.white.opacity(0.66))
+                Label(
+                    needsLocationConfirmation ? "示例位置 · 尚未确认" : "固定天气位置",
+                    systemImage: needsLocationConfirmation
+                        ? "location.slash.fill"
+                        : "location.fill"
+                )
+                .font(.caption.weight(.medium))
+                .foregroundStyle(
+                    needsLocationConfirmation ? Color.orange : Color.white.opacity(0.66)
+                )
             }
             .foregroundStyle(.white)
 
@@ -203,22 +218,31 @@ private struct DashboardFeedbackCard: View {
 
 private struct DashboardProtectionCard: View {
     let records: [ManagedAlarmRecord]
+    let settings: AppSettings
     let isAuthorized: Bool
     let isWorking: Bool
     let repairAction: () -> Void
     let scene: WeatherScene
 
+    private var futureRecords: [ManagedAlarmRecord] {
+        records.filter { $0.fireDate > .now }
+    }
+
+    private var upcomingRecords: [ManagedAlarmRecord] {
+        Array(futureRecords.prefix(7))
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 14) {
-                Image(systemName: records.isEmpty ? "shield.slash" : "checkmark.shield.fill")
+                Image(systemName: futureRecords.isEmpty ? "shield.slash" : "checkmark.shield.fill")
                     .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(records.isEmpty ? .orange : .mint)
+                    .foregroundStyle(futureRecords.isEmpty ? .orange : .mint)
                     .frame(width: 38, height: 38)
                     .background(.white.opacity(0.08), in: Circle())
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(records.isEmpty ? "保底守护尚未开启" : "未来 14 天守护已开启")
+                    Text(futureRecords.isEmpty ? "保底守护尚未开启" : "未来 14 天守护已开启")
                         .font(.subheadline.weight(.semibold))
                     Text(protectionDetail)
                         .font(.caption)
@@ -226,6 +250,20 @@ private struct DashboardProtectionCard: View {
                 }
 
                 Spacer(minLength: 0)
+            }
+
+            if !upcomingRecords.isEmpty {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 8) {
+                        ForEach(upcomingRecords) { record in
+                            UpcomingAlarmChip(
+                                record: record,
+                                calendar: settings.calendar
+                            )
+                        }
+                    }
+                }
+                .scrollIndicators(.hidden)
             }
 
             if isAuthorized {
@@ -247,10 +285,66 @@ private struct DashboardProtectionCard: View {
     }
 
     private var protectionDetail: String {
-        guard !records.isEmpty else {
+        guard !futureRecords.isEmpty else {
             return "授权后会为启用日建立可靠的保底闹钟"
         }
-        return "已有 (records.count) 个未来闹钟，天气失败也不会漏响"
+        return "已有 \(futureRecords.count) 个未来闹钟，天气失败也不会漏响"
+    }
+}
+
+private struct UpcomingAlarmChip: View {
+    let record: ManagedAlarmRecord
+    let calendar: Calendar
+
+    private var dayText: String {
+        if calendar.isDateInToday(record.fireDate) {
+            return "今天"
+        }
+        if calendar.isDateInTomorrow(record.fireDate) {
+            return "明天"
+        }
+        return DatePresentation.shortWeekday(record.fireDate, calendar: calendar)
+    }
+
+    private var timeText: String {
+        ClockTime(date: record.fireDate, calendar: calendar).displayText
+    }
+
+    private var kindSymbol: String {
+        switch record.kind {
+        case .rainy: "cloud.rain.fill"
+        case .clear: "sun.max.fill"
+        case .fallback: "shield.fill"
+        }
+    }
+
+    private var kindColor: Color {
+        switch record.kind {
+        case .rainy: Color(red: 0.52, green: 0.75, blue: 0.98)
+        case .clear: Color(red: 0.99, green: 0.75, blue: 0.44)
+        case .fallback: Color.white.opacity(0.55)
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 5) {
+            Text(dayText)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.62))
+            Text(timeText)
+                .font(.subheadline.weight(.semibold))
+                .monospacedDigit()
+                .foregroundStyle(.white)
+            Image(systemName: kindSymbol)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(kindColor)
+        }
+        .frame(minWidth: 58)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(dayText) \(timeText)，\(record.kind.displayName)闹钟")
     }
 }
 
@@ -258,6 +352,7 @@ private struct DashboardStatusCard: View {
     let status: RefreshStatus
     let statusSummary: String
     let authorizationText: String
+    let isAuthorized: Bool
     let verificationState: AppModel.AlarmVerificationState
     let settings: AppSettings
     let scene: WeatherScene
@@ -301,7 +396,7 @@ private struct DashboardStatusCard: View {
                 Spacer()
                 Text(authorizationText)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(authorizationText == "已授权" ? .mint : .orange)
+                    .foregroundStyle(isAuthorized ? .mint : .orange)
             }
 
             AlarmVerificationBadge(
@@ -443,8 +538,40 @@ private struct AlarmHeroView: View {
                 .font(.title3.weight(.medium))
                 .foregroundStyle(.white.opacity(0.84))
 
+            if let record {
+                TimelineView(.periodic(from: .now, by: 60)) { context in
+                    Text(countdownText(from: context.date, to: record.fireDate))
+                        .font(.footnote.weight(.medium))
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
+                        .foregroundStyle(.white.opacity(0.64))
+                }
+            }
+
             reasonPill
         }
+    }
+
+    private func countdownText(from now: Date, to fireDate: Date) -> String {
+        guard fireDate > now else { return "即将响铃" }
+        let components = settings.calendar.dateComponents(
+            [.day, .hour, .minute],
+            from: now,
+            to: fireDate
+        )
+        let days = components.day ?? 0
+        let hours = components.hour ?? 0
+        let minutes = components.minute ?? 0
+        if days > 0 {
+            return "\(days) 天 \(hours) 小时后响铃"
+        }
+        if hours > 0 {
+            return "\(hours) 小时 \(minutes) 分钟后响铃"
+        }
+        if minutes > 0 {
+            return "\(minutes) 分钟后响铃"
+        }
+        return "即将响铃"
     }
 
     private var emptyState: some View {
@@ -501,7 +628,7 @@ private struct AlarmHeroView: View {
                 settings.clearAlarmTime.minutesFromMidnight
                     - settings.rainyAlarmTime.minutesFromMidnight
             )
-            return advance > 0 ? "预计有雨，已提前 (advance) 分钟" : "预计有雨，按雨天规则唤醒"
+            return advance > 0 ? "预计有雨，已提前 \(advance) 分钟" : "预计有雨，按雨天规则唤醒"
         case .clear:
             return "通勤时段无明显降水"
         case .fallback:
@@ -647,10 +774,19 @@ private enum DatePresentation {
         "星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"
     ]
 
+    private static let shortWeekdays = [
+        "周日", "周一", "周二", "周三", "周四", "周五", "周六"
+    ]
+
     static func day(_ date: Date, calendar: Calendar) -> String {
         let components = calendar.dateComponents([.month, .day, .weekday], from: date)
         let weekdayIndex = max(1, min(7, components.weekday ?? 1)) - 1
         return "\(components.month ?? 0)月\(components.day ?? 0)日 · \(weekdays[weekdayIndex])"
+    }
+
+    static func shortWeekday(_ date: Date, calendar: Calendar) -> String {
+        let weekdayIndex = max(1, min(7, calendar.component(.weekday, from: date))) - 1
+        return shortWeekdays[weekdayIndex]
     }
 }
 
