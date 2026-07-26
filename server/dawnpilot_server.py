@@ -227,7 +227,10 @@ class ForecastCache:
             )
             return self._served_payload(payload, stale=False)
 
-        wait_timeout = max(self.config.upstream_timeout_seconds * 2 + 5, 10)
+        # Keep the follower wait shorter than the app's 30-second request
+        # timeout so a slow upstream produces a served error, not a client that
+        # already hung up.
+        wait_timeout = self.config.upstream_timeout_seconds + 5
         if not flight.event.wait(timeout=wait_timeout):
             raise UpstreamError("timed out waiting for an in-flight upstream request")
         if flight.error is not None:
