@@ -27,7 +27,7 @@ enum AppPresentationState {
             case .rebuildingFallbacks:
                 "正在重建未来 14 天的保底闹钟…"
             case .refreshingWeather:
-                "正在获取天气并更新明日闹钟…"
+                "正在获取天气并更新起床闹钟…"
             }
         }
     }

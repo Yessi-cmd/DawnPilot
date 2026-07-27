@@ -14,14 +14,46 @@ enum BackgroundRefreshController {
         }
     }
 
+    static let periodicInterval: TimeInterval = 6 * 60 * 60
+
     static func scheduleNext() {
         let request = BGAppRefreshTaskRequest(identifier: identifier)
-        request.earliestBeginDate = Date.now.addingTimeInterval(6 * 60 * 60)
+        request.earliestBeginDate = preferredBeginDate(
+            settings: SettingsStore.loadSettings(),
+            now: .now
+        )
         do {
             try BGTaskScheduler.shared.submit(request)
         } catch {
             // Shortcut automation remains the primary trigger. Background refresh is best effort.
         }
+    }
+
+    /// Aims the next opportunistic wake-up at the window shortly before the
+    /// earliest alarm that a morning correction could still move, and never later
+    /// than the periodic interval. iOS decides whether and when this actually runs;
+    /// the Shortcuts automations remain the reliable trigger.
+    static func preferredBeginDate(settings: AppSettings, now: Date) -> Date {
+        let periodic = now.addingTimeInterval(periodicInterval)
+        let calendar = settings.calendar
+        let today = calendar.startOfDay(for: now)
+        let earliestUsefulWake = now.addingTimeInterval(AppSettings.minimumCorrectionLead)
+
+        for dayOffset in 0...1 {
+            guard let day = calendar.date(byAdding: .day, value: dayOffset, to: today),
+                  settings.isEnabledAlarmDay(day),
+                  let earliestAlarm = RefreshTargetResolver.earliestTouchableAlarmDate(
+                      settings: settings,
+                      scheduledFireDate: nil,
+                      on: day
+                  ) else {
+                continue
+            }
+            let wake = earliestAlarm.addingTimeInterval(-AppSettings.correctionLookahead)
+            guard wake >= earliestUsefulWake else { continue }
+            return min(wake, periodic)
+        }
+        return periodic
     }
 
     private static func handle(_ task: BGAppRefreshTask) {
@@ -31,7 +63,7 @@ enum BackgroundRefreshController {
             do {
                 try Task.checkCancellation()
                 let settings = SettingsStore.loadSettings()
-                _ = try await AlarmCoordinator.shared.refreshTomorrow(settings: settings)
+                _ = try await AlarmCoordinator.shared.refreshUpcoming(settings: settings)
                 try Task.checkCancellation()
                 session.complete(success: true)
             } catch {

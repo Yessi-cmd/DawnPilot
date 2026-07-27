@@ -78,6 +78,13 @@ enum PrecipitationEvaluator {
         }
 
         let maximumProbability = matchingHours.compactMap(\.precipitationProbability).max() ?? 0
+        let significantProbabilities = matchingHours
+            .compactMap(\.significantPrecipitationProbability)
+        // Only trust the significant probability when every matching hour carries
+        // one; a partial timeline would understate the window.
+        let maximumSignificantProbability = significantProbabilities.count == matchingHours.count
+            ? significantProbabilities.max()
+            : nil
         let maximumPrecipitation = matchingHours.map { hour in
             max(
                 hour.precipitationMM ?? 0,
@@ -87,21 +94,60 @@ enum PrecipitationEvaluator {
             )
         }.max() ?? 0
 
-        let hasPrecipitationCode = matchingHours.contains { hour in
+        let hasSignificantCode = matchingHours.contains { hour in
             guard let code = hour.weatherCode else { return false }
-            return precipitationWeatherCodes.contains(code)
+            return significantPrecipitationWeatherCodes.contains(code)
         }
-        let reachesProbabilityThreshold = maximumProbability >= Double(settings.precipitationProbabilityThreshold)
-        let hasMeasurablePrecipitation = maximumPrecipitation >= 0.1
-        let isRainy = reachesProbabilityThreshold || hasMeasurablePrecipitation || hasPrecipitationCode
+        let hasMeasurableCode = matchingHours.contains { hour in
+            guard let code = hour.weatherCode else { return false }
+            return measurablePrecipitationWeatherCodes.contains(code)
+        }
+        let threshold = Double(settings.precipitationProbabilityThreshold)
+
+        // The same threshold is applied to two definitions of rain. Reaching it on
+        // commute-changing rain earns the early alarm; reaching it only on
+        // measurable drizzle earns the hedge between the two times. Waking up late
+        // in real rain costs far more than losing the difference in sleep, so
+        // anything short of a confidently dry window keeps some of the margin.
+        let isSignificant: Bool
+        if let maximumSignificantProbability {
+            isSignificant = maximumSignificantProbability >= threshold
+                || maximumPrecipitation >= significantPrecipitationMM
+                || hasSignificantCode
+        } else {
+            // Without member-derived probabilities, fall back to the older, more
+            // cautious rule so a degraded server never delays the alarm.
+            isSignificant = maximumProbability >= threshold
+                || maximumPrecipitation >= measurablePrecipitationMM
+                || hasSignificantCode
+                || hasMeasurableCode
+        }
+        let isMeasurable = maximumProbability >= threshold
+            || maximumPrecipitation >= measurablePrecipitationMM
+            || hasMeasurableCode
+            || hasSignificantCode
+
+        let kind: ManagedAlarmKind
+        if isSignificant {
+            kind = .rainy
+        } else if isMeasurable {
+            kind = .fallback
+        } else {
+            kind = .clear
+        }
 
         return WeatherEvaluation(
-            kind: isRainy ? .rainy : .clear,
+            kind: kind,
             maximumProbability: maximumProbability,
+            maximumSignificantProbability: maximumSignificantProbability,
             maximumPrecipitationMM: maximumPrecipitation,
             matchingHourCount: matchingHours.count
         )
     }
+
+    static let measurablePrecipitationMM = 0.1
+    /// Rain heavy enough to change a commute, matching the server's definition.
+    static let significantPrecipitationMM = 0.5
 
     private static func expectedTargetHours(
         targetDate: Date,
@@ -135,7 +181,13 @@ enum PrecipitationEvaluator {
         return result
     }
 
-    // WMO weather codes for drizzle, rain, snow, showers and thunderstorms.
-    private static let precipitationWeatherCodes: Set<Int> =
-        Set(51...57).union(61...67).union(71...77).union(80...82).union(85...86).union(95...99)
+    // WMO codes for drizzle, slight rain or snow, and slight showers. Enough to
+    // wet the ground, not enough on their own to justify the early alarm.
+    private static let measurablePrecipitationWeatherCodes: Set<Int> =
+        Set([51, 53, 55, 56, 57, 61, 71, 77, 80])
+
+    // WMO codes for moderate or heavy rain and snow, freezing rain, heavier
+    // showers and thunderstorms.
+    private static let significantPrecipitationWeatherCodes: Set<Int> =
+        Set([63, 65, 66, 67, 73, 75, 81, 82, 85, 86]).union(95...99)
 }

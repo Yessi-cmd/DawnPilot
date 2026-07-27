@@ -73,6 +73,223 @@ final class PrecipitationEvaluatorTests: XCTestCase {
         XCTAssertEqual(result.kind, .rainy)
     }
 
+    // MARK: - Three-tier decision with member-derived probabilities
+
+    func testSignificantProbabilityAtThresholdChoosesRainyTime() throws {
+        settings.precipitationProbabilityThreshold = 25
+        let forecast = makeForecast(hours: [
+            makeHour(
+                day: tomorrow,
+                hour: 7,
+                probability: 80,
+                precipitation: 0,
+                code: 3,
+                significantProbability: 25
+            ),
+            makeHour(
+                day: tomorrow,
+                hour: 8,
+                probability: 60,
+                precipitation: 0,
+                code: 3,
+                significantProbability: 10
+            )
+        ])
+
+        let result = try PrecipitationEvaluator.evaluate(
+            forecast: forecast,
+            targetDate: tomorrow,
+            settings: settings,
+            now: now
+        )
+
+        XCTAssertEqual(result.kind, .rainy)
+        XCTAssertEqual(result.maximumSignificantProbability, 25)
+    }
+
+    func testLikelyDrizzleTakesTheHedgeTimeInsteadOfTheRainyTime() throws {
+        settings.precipitationProbabilityThreshold = 25
+        let forecast = makeForecast(hours: [
+            makeHour(
+                day: tomorrow,
+                hour: 7,
+                probability: 70,
+                precipitation: 0.2,
+                code: 51,
+                significantProbability: 8
+            ),
+            makeHour(
+                day: tomorrow,
+                hour: 8,
+                probability: 55,
+                precipitation: 0.1,
+                code: 51,
+                significantProbability: 5
+            )
+        ])
+
+        let result = try PrecipitationEvaluator.evaluate(
+            forecast: forecast,
+            targetDate: tomorrow,
+            settings: settings,
+            now: now
+        )
+
+        XCTAssertEqual(result.kind, .fallback)
+        XCTAssertEqual(result.maximumSignificantProbability, 8)
+    }
+
+    func testCommuteChangingAmountChoosesRainyEvenWhenMembersDisagree() throws {
+        settings.precipitationProbabilityThreshold = 25
+        let forecast = makeForecast(hours: [
+            makeHour(
+                day: tomorrow,
+                hour: 7,
+                probability: 20,
+                precipitation: 0.8,
+                code: 3,
+                significantProbability: 5
+            ),
+            makeHour(
+                day: tomorrow,
+                hour: 8,
+                probability: 10,
+                precipitation: 0,
+                code: 1,
+                significantProbability: 2
+            )
+        ])
+
+        let result = try PrecipitationEvaluator.evaluate(
+            forecast: forecast,
+            targetDate: tomorrow,
+            settings: settings,
+            now: now
+        )
+
+        XCTAssertEqual(result.kind, .rainy)
+    }
+
+    func testDryWindowStillChoosesClearTime() throws {
+        settings.precipitationProbabilityThreshold = 25
+        let forecast = makeForecast(hours: [
+            makeHour(
+                day: tomorrow,
+                hour: 7,
+                probability: 12,
+                precipitation: 0,
+                code: 2,
+                significantProbability: 3
+            ),
+            makeHour(
+                day: tomorrow,
+                hour: 8,
+                probability: 8,
+                precipitation: 0,
+                code: 1,
+                significantProbability: 1
+            )
+        ])
+
+        let result = try PrecipitationEvaluator.evaluate(
+            forecast: forecast,
+            targetDate: tomorrow,
+            settings: settings,
+            now: now
+        )
+
+        XCTAssertEqual(result.kind, .clear)
+    }
+
+    func testDrizzleCodeAloneNeverForcesTheRainyTime() throws {
+        settings.precipitationProbabilityThreshold = 25
+        let forecast = makeForecast(hours: [
+            makeHour(
+                day: tomorrow,
+                hour: 7,
+                probability: 5,
+                precipitation: 0,
+                code: 53,
+                significantProbability: 1
+            ),
+            makeHour(
+                day: tomorrow,
+                hour: 8,
+                probability: 5,
+                precipitation: 0,
+                code: 1,
+                significantProbability: 0
+            )
+        ])
+
+        let result = try PrecipitationEvaluator.evaluate(
+            forecast: forecast,
+            targetDate: tomorrow,
+            settings: settings,
+            now: now
+        )
+
+        XCTAssertEqual(result.kind, .fallback)
+    }
+
+    func testHeavyRainCodeAloneChoosesTheRainyTime() throws {
+        settings.precipitationProbabilityThreshold = 25
+        let forecast = makeForecast(hours: [
+            makeHour(
+                day: tomorrow,
+                hour: 7,
+                probability: 5,
+                precipitation: 0,
+                code: 65,
+                significantProbability: 1
+            ),
+            makeHour(
+                day: tomorrow,
+                hour: 8,
+                probability: 5,
+                precipitation: 0,
+                code: 1,
+                significantProbability: 0
+            )
+        ])
+
+        let result = try PrecipitationEvaluator.evaluate(
+            forecast: forecast,
+            targetDate: tomorrow,
+            settings: settings,
+            now: now
+        )
+
+        XCTAssertEqual(result.kind, .rainy)
+    }
+
+    func testPartialSignificantCoverageFallsBackToTheCautiousRule() throws {
+        settings.precipitationProbabilityThreshold = 25
+        // Only one hour carries a member-derived probability, so the window keeps
+        // the older rule and measurable rain alone earns the early alarm.
+        let forecast = makeForecast(hours: [
+            makeHour(
+                day: tomorrow,
+                hour: 7,
+                probability: 30,
+                precipitation: 0.2,
+                code: 51,
+                significantProbability: 2
+            ),
+            makeHour(day: tomorrow, hour: 8, probability: 10, precipitation: 0, code: 1)
+        ])
+
+        let result = try PrecipitationEvaluator.evaluate(
+            forecast: forecast,
+            targetDate: tomorrow,
+            settings: settings,
+            now: now
+        )
+
+        XCTAssertEqual(result.kind, .rainy)
+        XCTAssertNil(result.maximumSignificantProbability)
+    }
+
     func testHoursOutsideWindowDoNotAffectDecision() throws {
         let forecast = makeForecast(hours: [
             makeHour(day: tomorrow, hour: 6, probability: 95, precipitation: 5, code: 65),
@@ -323,7 +540,8 @@ final class PrecipitationEvaluatorTests: XCTestCase {
         hour: Int,
         probability: Double?,
         precipitation: Double?,
-        code: Int?
+        code: Int?,
+        significantProbability: Double? = nil
     ) -> ForecastHour {
         var components = calendar.dateComponents([.year, .month, .day], from: day)
         components.hour = hour
@@ -331,6 +549,7 @@ final class PrecipitationEvaluatorTests: XCTestCase {
         return ForecastHour(
             time: date,
             precipitationProbability: probability,
+            significantPrecipitationProbability: significantProbability,
             precipitationMM: precipitation,
             rainMM: precipitation,
             showersMM: precipitation == nil ? nil : 0,

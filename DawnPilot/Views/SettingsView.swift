@@ -93,6 +93,14 @@ struct SettingsView: View {
                     in: 0...100,
                     step: 5
                 )
+                Text("""
+                    达到该概率的明显降水（≥0.5mm）用雨天时间；\
+                    只达到该概率的零星降水（≥0.1mm）用折中的保底时间；\
+                    都不到才用晴天时间。阈值低于 50% 是刻意的：\
+                    下雨天晚起的代价高于白早起。
+                    """)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
 
             Section("启用星期") {
@@ -144,7 +152,7 @@ struct SettingsView: View {
 
             Section {
                 Button(
-                    "保存、重建并更新明日闹钟",
+                    "保存、重建并更新起床闹钟",
                     systemImage: "checkmark.circle",
                     action: saveAndRefresh
                 )

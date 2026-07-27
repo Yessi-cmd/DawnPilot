@@ -123,12 +123,15 @@ actor AlarmCoordinator {
         }
     }
 
-    func refreshTomorrow(
+    /// Updates the next alarm that weather can still decide: tomorrow's alarm for
+    /// a nightly run, or today's alarm when an early-morning run happens well
+    /// before it rings.
+    func refreshUpcoming(
         settings: AppSettings,
         now: Date = .now
     ) async throws -> RefreshStatus {
         try await runSerialized {
-            try await self.performRefreshTomorrow(settings: settings, now: now)
+            try await self.performRefreshUpcoming(settings: settings, now: now)
         }
     }
 
@@ -139,7 +142,9 @@ actor AlarmCoordinator {
         // with no await in between, so enqueueing is atomic under reentrancy.
         let previous = operationTail
         let current = Task {
+            try Task.checkCancellation()
             await previous?.value
+            try Task.checkCancellation()
             return try await operation()
         }
         operationTail = Task { _ = try? await current.value }
@@ -312,27 +317,32 @@ actor AlarmCoordinator {
         return status
     }
 
-    private func performRefreshTomorrow(
+    private func performRefreshUpcoming(
         settings: AppSettings,
         now: Date
     ) async throws -> RefreshStatus {
         try validate(settings)
         try await requireAuthorization()
         _ = try await ensureFallbackHorizon(settings: settings, now: now)
+        try await ensureCurrentDaySafetyAlarm(settings: settings, now: now)
         try Task.checkCancellation()
 
         let calendar = settings.calendar
-        guard let tomorrow = calendar.date(
-            byAdding: .day,
-            value: 1,
-            to: calendar.startOfDay(for: now)
+        // Resolved after the horizon pass so today's record reflects committed state.
+        let todayKey = makeDateKey(calendar.startOfDay(for: now), calendar: calendar)
+        guard let target = RefreshTargetResolver.resolve(
+            settings: settings,
+            scheduledTodayFireDate: records.first { $0.dateKey == todayKey }?.fireDate,
+            now: now
         ) else {
             throw AlarmCoordinatorError.unableToBuildDate
         }
-        guard settings.isEnabledAlarmDay(tomorrow) else {
+        let targetDay = target.day
+        let dayLabel = target.isSameDayCorrection ? "今天" : "明天"
+        guard settings.isEnabledAlarmDay(targetDay) else {
             let status = RefreshStatus(
                 outcome: .skipped,
-                message: "明天不是已启用的闹钟日，不安排闹钟。",
+                message: "\(dayLabel)不是已启用的闹钟日，不安排闹钟。",
                 alarmDate: nil,
                 updatedAt: now,
                 forecastFetchedAt: nil,
@@ -342,12 +352,12 @@ actor AlarmCoordinator {
             return status
         }
 
-        let dateKey = makeDateKey(tomorrow, calendar: calendar)
+        let dateKey = makeDateKey(targetDay, calendar: calendar)
         if let weatherConfigurationError = settings.weatherConfigurationError {
             return weatherFailureStatus(
                 error: WeatherServiceError.invalidSettings(weatherConfigurationError),
                 dateKey: dateKey,
-                tomorrow: tomorrow,
+                targetDay: targetDay,
                 settings: settings,
                 now: now
             )
@@ -360,7 +370,7 @@ actor AlarmCoordinator {
             try WeatherService.validate(forecast, settings: settings, now: now)
             evaluation = try PrecipitationEvaluator.evaluate(
                 forecast: forecast,
-                targetDate: tomorrow,
+                targetDate: targetDay,
                 settings: settings,
                 now: now
             )
@@ -369,17 +379,52 @@ actor AlarmCoordinator {
             return weatherFailureStatus(
                 error: error,
                 dateKey: dateKey,
-                tomorrow: tomorrow,
+                targetDay: targetDay,
                 settings: settings,
                 now: now
             )
         }
 
         guard let fireDate = settings.alarmTime(for: evaluation.kind).alarmDate(
-            on: tomorrow,
+            on: targetDay,
             calendar: calendar
         ) else {
             throw AlarmCoordinatorError.unableToBuildDate
+        }
+        // Moving an alarm earlier is always safe. Moving it later trades sleep
+        // against the risk of waking up late in rain, so a morning correction only
+        // does that on a confidently dry window.
+        if target.isSameDayCorrection,
+           evaluation.kind != .clear,
+           let existing = records.first(where: { $0.dateKey == dateKey }),
+           fireDate > existing.fireDate {
+            let status = RefreshStatus(
+                outcome: existing.kind == .rainy ? .rainy : .fallback,
+                message: """
+                    \(evaluation.summary)；把握不足，保留今日更早的\
+                    \(clockText(for: existing.fireDate, calendar: calendar))闹钟。
+                    """,
+                alarmDate: existing.fireDate,
+                updatedAt: now,
+                forecastFetchedAt: forecast.fetchedAt,
+                forecastWasStale: forecast.stale
+            )
+            SettingsStore.saveStatus(status, defaults: defaults)
+            return status
+        }
+        // The resolver guarantees a same-day correction still has lead time, but a
+        // slow weather request can consume it. Never move an alarm too close to now.
+        if target.isSameDayCorrection,
+           fireDate <= now.addingTimeInterval(AppSettings.minimumCorrectionLead) {
+            return weatherFailureStatus(
+                error: WeatherServiceError.invalidSettings(
+                    "今日闹钟距离响铃时间过近，不再改动"
+                ),
+                dateKey: dateKey,
+                targetDay: targetDay,
+                settings: settings,
+                now: now
+            )
         }
         _ = try await replaceRecord(
             dateKey: dateKey,
@@ -388,9 +433,18 @@ actor AlarmCoordinator {
             now: now
         )
 
+        let clock = clockText(for: fireDate, calendar: calendar)
+        let outcome: RefreshOutcome
+        switch evaluation.kind {
+        case .rainy: outcome = .rainy
+        case .fallback: outcome = .fallback
+        case .clear: outcome = .clear
+        }
         let status = RefreshStatus(
-            outcome: evaluation.kind == .rainy ? .rainy : .clear,
-            message: "\(evaluation.summary)，闹钟设为 \(clockText(for: fireDate, calendar: calendar))。",
+            outcome: outcome,
+            message: target.isSameDayCorrection
+                ? "\(evaluation.summary)，已按最新天气把今日闹钟校准为 \(clock)。"
+                : "\(evaluation.summary)，闹钟设为 \(clock)。",
             alarmDate: fireDate,
             updatedAt: now,
             forecastFetchedAt: forecast.fetchedAt,
@@ -398,6 +452,74 @@ actor AlarmCoordinator {
         )
         SettingsStore.saveStatus(status, defaults: defaults)
         return status
+    }
+
+    /// A refresh must leave today protected even when the persisted record was
+    /// lost before the morning weather request. The normal horizon starts at
+    /// tomorrow, so establish today's fallback before resolving the target day.
+    private func ensureCurrentDaySafetyAlarm(
+        settings: AppSettings,
+        now: Date
+    ) async throws {
+        let calendar = settings.calendar
+        let today = calendar.startOfDay(for: now)
+        guard settings.isEnabledAlarmDay(today) else { return }
+        guard let fallbackDate = settings.fallbackAlarmTime.alarmDate(
+            on: today,
+            calendar: calendar
+        ) else {
+            throw AlarmCoordinatorError.unableToBuildDate
+        }
+        guard fallbackDate > now else { return }
+
+        let dateKey = makeDateKey(today, calendar: calendar)
+        if let existing = records.first(where: { $0.dateKey == dateKey }) {
+            if let alarm = try await systemAlarm(id: existing.alarmID) {
+                // Keep an opaque current-day AlarmKit state as a safety net. A
+                // replacement is only safe when no physical copy remains.
+                guard isSafeFutureAlarm(alarm, matching: existing, now: now) else {
+                    return
+                }
+                return
+            }
+        }
+
+        // A crash can leave a scheduled AlarmKit alarm after its UserDefaults
+        // record was lost. Adopt one verified current-day safety net before
+        // scheduling anything, so recovery cannot create two physical alarms.
+        let knownIDs = Set(records.map(\.alarmID))
+        let unknownToday = try await alarmDriver.alarms()
+            .filter { alarm in
+                guard !knownIDs.contains(alarm.id),
+                      alarm.state == .scheduled,
+                      let fireDate = alarm.fireDate else {
+                    return false
+                }
+                return fireDate > now
+                    && calendar.isDate(fireDate, inSameDayAs: today)
+            }
+            .min { lhs, rhs in
+                (lhs.fireDate ?? .distantFuture) < (rhs.fireDate ?? .distantFuture)
+            }
+        if let unknownToday, let fireDate = unknownToday.fireDate {
+            let adopted = ManagedAlarmRecord(
+                dateKey: dateKey,
+                alarmID: unknownToday.id,
+                fireDate: fireDate,
+                kind: .fallback,
+                updatedAt: now
+            )
+            try await verifySafeScheduledAlarm(adopted, now: now)
+            try persistRecords(records + [adopted])
+            return
+        }
+
+        _ = try await replaceRecord(
+            dateKey: dateKey,
+            fireDate: fallbackDate,
+            kind: .fallback,
+            now: now
+        )
     }
 
     private func ensureFallbackHorizon(
@@ -1443,14 +1565,14 @@ actor AlarmCoordinator {
     private func weatherFailureStatus(
         error: Error,
         dateKey: String,
-        tomorrow: Date,
+        targetDay: Date,
         settings: AppSettings,
         now: Date
     ) -> RefreshStatus {
         let existing = records.first { $0.dateKey == dateKey }
         let retainedTime = existing?.fireDate
             ?? settings.fallbackAlarmTime.alarmDate(
-                on: tomorrow,
+                on: targetDay,
                 calendar: settings.calendar
             )
         let retainedDescription: String

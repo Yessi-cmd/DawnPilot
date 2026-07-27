@@ -104,7 +104,7 @@ final class AppModel: ObservableObject {
 
         Task {
             do {
-                let result = try await AlarmCoordinator.shared.refreshTomorrow(
+                let result = try await AlarmCoordinator.shared.refreshUpcoming(
                     settings: requestedSettings
                 )
                 await finishOperation(with: result)
@@ -168,7 +168,7 @@ final class AppModel: ObservableObject {
 
                 if includeWeatherRefresh {
                     operationPhase = .refreshingWeather
-                    result = try await AlarmCoordinator.shared.refreshTomorrow(
+                    result = try await AlarmCoordinator.shared.refreshUpcoming(
                         settings: committedSettings
                     )
                 }
@@ -235,7 +235,7 @@ final class AppModel: ObservableObject {
         do {
             settings = try SettingsStore.replaceCorruptedSettings(recoveredSettings)
             operationIssue = nil
-            operationSuccessMessage = "设置已恢复。请继续创建保底闹钟或更新明日闹钟。"
+            operationSuccessMessage = "设置已恢复。请继续创建保底闹钟或更新起床闹钟。"
             return true
         } catch {
             presentIssue(AppOperationIssueFactory.make(for: error))

@@ -145,7 +145,11 @@ struct AppSettings: Codable, Equatable, Sendable {
 
     var forecastWindowStart = ClockTime(hour: 7, minute: 0)
     var forecastWindowEnd = ClockTime(hour: 9, minute: 0)
-    var precipitationProbabilityThreshold = 40
+    // Applied to two definitions of rain: reaching it on commute-changing rain
+    // (>=0.5mm) picks the early alarm, reaching it only on measurable rain
+    // (>=0.1mm) picks the hedge time. Lower than a coin flip on purpose, because
+    // waking up late in rain costs more than the difference in sleep.
+    var precipitationProbabilityThreshold = 25
 
     // Calendar weekday values: Sunday = 1, Monday = 2, ... Saturday = 7.
     var enabledWeekdays: Set<Int> = [2, 3, 4, 5, 6]
@@ -156,6 +160,13 @@ struct AppSettings: Codable, Equatable, Sendable {
     static let fallbackHorizonDays = 14
     static let maximumForecastAge: TimeInterval = 6 * 60 * 60
     static let maximumForecastClockSkew: TimeInterval = 5 * 60
+    /// A morning correction may only touch today's alarm while every possible
+    /// outcome is still this far in the future. It keeps a re-check from
+    /// rescheduling an alarm that is about to ring.
+    static let minimumCorrectionLead: TimeInterval = 15 * 60
+    /// How early before the earliest possible alarm the best-effort background
+    /// refresh aims to run.
+    static let correctionLookahead: TimeInterval = 75 * 60
     static let defaultTimeZoneIdentifier = "Asia/Shanghai"
     static let exampleLatitude = 31.2304
     static let exampleLongitude = 121.4737

@@ -27,6 +27,9 @@ struct ServerForecast: Decodable, Sendable {
 struct ForecastHour: Decodable, Equatable, Sendable {
     let time: Date
     let precipitationProbability: Double?
+    /// Share of ensemble members reaching commute-changing rain. Absent when the
+    /// server could not build it from ensemble members.
+    let significantPrecipitationProbability: Double?
     let precipitationMM: Double?
     let rainMM: Double?
     let showersMM: Double?
@@ -36,11 +39,34 @@ struct ForecastHour: Decodable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case time
         case precipitationProbability = "precipitation_probability"
+        case significantPrecipitationProbability = "precipitation_probability_significant"
         case precipitationMM = "precipitation_mm"
         case rainMM = "rain_mm"
         case showersMM = "showers_mm"
         case snowfallCM = "snowfall_cm"
         case weatherCode = "weather_code"
+    }
+
+    /// The significant-rain probability is optional so payloads from a server
+    /// without ensemble data keep compiling and decoding unchanged.
+    init(
+        time: Date,
+        precipitationProbability: Double?,
+        significantPrecipitationProbability: Double? = nil,
+        precipitationMM: Double?,
+        rainMM: Double?,
+        showersMM: Double?,
+        snowfallCM: Double?,
+        weatherCode: Int?
+    ) {
+        self.time = time
+        self.precipitationProbability = precipitationProbability
+        self.significantPrecipitationProbability = significantPrecipitationProbability
+        self.precipitationMM = precipitationMM
+        self.rainMM = rainMM
+        self.showersMM = showersMM
+        self.snowfallCM = snowfallCM
+        self.weatherCode = weatherCode
     }
 
     var hasWeatherSignal: Bool {
@@ -53,10 +79,13 @@ struct ForecastHour: Decodable, Equatable, Sendable {
     }
 
     var weatherSignalValidationError: String? {
-        if let precipitationProbability,
-           !precipitationProbability.isFinite
-            || !(0...100).contains(precipitationProbability) {
-            return "降水概率必须在 0 到 100 之间。"
+        for (name, probability) in [
+            ("降水概率", precipitationProbability),
+            ("明显降水概率", significantPrecipitationProbability)
+        ] {
+            if let probability, !probability.isFinite || !(0...100).contains(probability) {
+                return "\(name)必须在 0 到 100 之间。"
+            }
         }
 
         let measurements = [
@@ -95,17 +124,38 @@ enum ManagedAlarmKind: String, Codable, Sendable {
 struct WeatherEvaluation: Equatable, Sendable {
     let kind: ManagedAlarmKind
     let maximumProbability: Double
+    /// Nil when the server could not provide member-derived significant-rain
+    /// probabilities for every hour of the window.
+    let maximumSignificantProbability: Double?
     let maximumPrecipitationMM: Double
     let matchingHourCount: Int
 
+    init(
+        kind: ManagedAlarmKind,
+        maximumProbability: Double,
+        maximumSignificantProbability: Double? = nil,
+        maximumPrecipitationMM: Double,
+        matchingHourCount: Int
+    ) {
+        self.kind = kind
+        self.maximumProbability = maximumProbability
+        self.maximumSignificantProbability = maximumSignificantProbability
+        self.maximumPrecipitationMM = maximumPrecipitationMM
+        self.matchingHourCount = matchingHourCount
+    }
+
     var summary: String {
+        let measurable = Int(maximumProbability.rounded())
         switch kind {
         case .rainy:
-            "通勤时段预计有降水（最高概率 \(Int(maximumProbability.rounded()))%）"
-        case .clear:
-            "通勤时段未达到降水阈值（最高概率 \(Int(maximumProbability.rounded()))%）"
+            if let maximumSignificantProbability {
+                return "通勤时段预计有明显降水（≥0.5mm 概率 \(Int(maximumSignificantProbability.rounded()))%）"
+            }
+            return "通勤时段预计有降水（最高概率 \(measurable)%）"
         case .fallback:
-            "天气不可用，使用保底时间"
+            return "通勤时段可能有零星小雨（降水概率 \(measurable)%），取折中时间"
+        case .clear:
+            return "通勤时段未达到降水阈值（最高概率 \(measurable)%）"
         }
     }
 }
@@ -241,7 +291,7 @@ struct RefreshStatus: Codable, Equatable, Sendable {
 
     static let empty = RefreshStatus(
         outcome: .prepared,
-        message: "尚未更新明日闹钟",
+        message: "尚未更新起床闹钟",
         alarmDate: nil,
         updatedAt: .distantPast,
         forecastFetchedAt: nil,

@@ -5,6 +5,25 @@ bounded set of locations requested by the app, refreshes them periodically,
 persists validated forecasts, and serves the last known good forecast
 immediately while an expired entry refreshes in the background.
 
+Each refresh issues two upstream requests in parallel, so elapsed latency stays
+within one upstream timeout window while the server still consumes two upstream
+requests:
+
+- `api.open-meteo.com/v1/forecast` for precipitation amounts and WMO weather
+  codes.
+- `ensemble-api.open-meteo.com/v1/ensemble` for `ecmwf_ifs025`, `icon_global` and
+  `gfs025`. An hour's `precipitation_probability` becomes the share of members
+  reaching 0.1 mm, computed over roughly 119 members instead of the single
+  ensemble behind the deterministic probability field. The same members also
+  produce `precipitation_probability_significant`, the share reaching 0.5 mm,
+  which is the rain the app treats as commute-changing.
+
+The ensemble leg is optional. If it fails, returns fewer than 40 usable members,
+or does not cover every hour of the deterministic timeline, the payload keeps the
+deterministic probability. The forecast schema is unchanged; `probability_source`,
+`ensemble_member_count` and `ensemble_models` are informational fields that older
+app builds ignore.
+
 Only a semantically valid Forecast v1 response can replace cached data. Hourly
 arrays must be non-empty and equal in length, timestamps must be unique,
 strictly ordered and hour-aligned, and all weather values must be finite and in

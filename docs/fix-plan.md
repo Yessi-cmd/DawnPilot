@@ -175,10 +175,11 @@ xcodebuild test -project DawnPilot.xcodeproj -scheme DawnPilot \
 python3 -m unittest discover -s server/tests -v
 ```
 
-## 验证记录（2026-07-26）
+## 验证记录（2026-07-27）
 
-- Swift 测试：iPhone 17 Pro 模拟器 65/65 通过（含全部协调器恢复场景）。
-- Python 测试：30/30 通过。
+- Swift 测试：iPhone 17 Pro 模拟器 92/92 通过（含全部协调器恢复场景）。
+- Python 测试：44/44 通过。
+- 新增队列取消、当天记录丢失、未知当天闹钟收编和 ensemble 异常回退的回归测试。
 - 模拟器构建、`xcodegen generate` 均通过；工程文件已随死视图删除重新生成。
 - 模拟器实机截图确认：标题栏"示例位置 · 尚未确认"橙色提示（5.3）、
   主视觉空状态、守护卡片按"未来记录"计数（过期幽灵记录不再误计入）。

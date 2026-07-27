@@ -23,6 +23,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -39,6 +40,23 @@ HOURLY_FIELDS = (
     "snowfall",
     "weather_code",
 )
+# Amounts and weather codes stay on the deterministic best-match forecast. The
+# probability of precipitation instead comes from ensemble members, which have a
+# far better resolved tail than the single ensemble behind the deterministic
+# precipitation_probability field.
+ENSEMBLE_URL = "https://ensemble-api.open-meteo.com/v1/ensemble"
+ENSEMBLE_MODELS = ("ecmwf_ifs025", "icon_global", "gfs025")
+ENSEMBLE_HOURLY_FIELD = "precipitation"
+MEASURABLE_PRECIPITATION_MM = 0.1
+# Rain worth leaving earlier for. Measurable drizzle wets the ground without
+# changing a commute, so the app decides on this threshold and keeps the
+# measurable one for the milder hedge.
+SIGNIFICANT_PRECIPITATION_MM = 0.5
+# Below this many usable members the ensemble is not better than the
+# deterministic field, so the forecast keeps the deterministic probability.
+MINIMUM_ENSEMBLE_MEMBERS = 40
+PROBABILITY_SOURCE_ENSEMBLE = "ensemble"
+PROBABILITY_SOURCE_DETERMINISTIC = "deterministic"
 CACHE_SCHEMA_VERSION = 2
 FORECAST_SCHEMA_VERSION = 1
 MAXIMUM_COORDINATE_DRIFT_DEGREES = 0.1
@@ -633,7 +651,44 @@ def fetch_open_meteo(
     timezone: str,
     timeout_seconds: int,
 ) -> dict[str, Any]:
-    query = urllib.parse.urlencode(
+    # Both requests run at once so elapsed latency stays bounded by the slower
+    # request. Only the deterministic forecast is required; a failed ensemble
+    # request degrades the probability source instead of losing the forecast.
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="dawnpilot-upstream") as pool:
+        deterministic_request = pool.submit(
+            request_deterministic_forecast,
+            latitude,
+            longitude,
+            timezone,
+            timeout_seconds,
+        )
+        ensemble_request = pool.submit(
+            request_ensemble_probabilities,
+            latitude,
+            longitude,
+            timezone,
+            timeout_seconds,
+        )
+        try:
+            ensemble = ensemble_request.result()
+        except Exception:
+            # The ensemble leg is deliberately best effort. request_open_meteo_json
+            # normally wraps expected failures as UpstreamError, but malformed
+            # responses or transport-library errors must not take down the
+            # deterministic forecast either.
+            ensemble = None
+        raw = deterministic_request.result()
+    return normalize_open_meteo(raw, requested_timezone=timezone, ensemble=ensemble)
+
+
+def request_deterministic_forecast(
+    latitude: float,
+    longitude: float,
+    timezone: str,
+    timeout_seconds: int,
+) -> dict[str, Any]:
+    return request_open_meteo_json(
+        UPSTREAM_URL,
         {
             "latitude": f"{latitude:.6f}",
             "longitude": f"{longitude:.6f}",
@@ -641,21 +696,133 @@ def fetch_open_meteo(
             "forecast_days": "3",
             "timeformat": "unixtime",
             "hourly": ",".join(HOURLY_FIELDS),
-        }
+        },
+        timeout_seconds,
     )
+
+
+def request_ensemble_probabilities(
+    latitude: float,
+    longitude: float,
+    timezone: str,
+    timeout_seconds: int,
+) -> dict[str, Any]:
+    raw = request_open_meteo_json(
+        ENSEMBLE_URL,
+        {
+            "latitude": f"{latitude:.6f}",
+            "longitude": f"{longitude:.6f}",
+            "timezone": timezone,
+            "forecast_days": "3",
+            "timeformat": "unixtime",
+            "hourly": ENSEMBLE_HOURLY_FIELD,
+            "models": ",".join(ENSEMBLE_MODELS),
+        },
+        timeout_seconds,
+    )
+    return derive_ensemble_probabilities(raw)
+
+
+def request_open_meteo_json(
+    url: str,
+    parameters: dict[str, str],
+    timeout_seconds: int,
+) -> dict[str, Any]:
     request = urllib.request.Request(
-        f"{UPSTREAM_URL}?{query}",
+        f"{url}?{urllib.parse.urlencode(parameters)}",
         headers={"Accept": "application/json", "User-Agent": "DawnPilot/0.1"},
     )
     try:
         with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
-            raw = json.load(response)
+            return json.load(response)
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as error:
         raise UpstreamError(f"Open-Meteo request failed: {error}") from error
-    return normalize_open_meteo(raw, requested_timezone=timezone)
 
 
-def normalize_open_meteo(raw: dict[str, Any], requested_timezone: str) -> dict[str, Any]:
+def derive_ensemble_probabilities(raw: dict[str, Any]) -> dict[str, Any]:
+    """Turn per-member precipitation into probabilities of precipitation.
+
+    An hour's probability is the share of members that reach a rain threshold.
+    `MEASURABLE_PRECIPITATION_MM` matches the definition Open-Meteo documents for
+    its own probability field; `SIGNIFICANT_PRECIPITATION_MM` is the share that
+    reaches rain heavy enough to change a commute. Both are computed across every
+    member of every requested model.
+    """
+    try:
+        if not isinstance(raw, dict):
+            raise TypeError("ensemble response must be an object")
+        hourly = raw["hourly"]
+        if not isinstance(hourly, dict):
+            raise TypeError("ensemble hourly must be an object")
+        times = hourly["time"]
+        if not isinstance(times, list) or not times:
+            raise TypeError("ensemble hourly.time must be a non-empty array")
+    except (KeyError, TypeError) as error:
+        raise UpstreamError("Open-Meteo ensemble response is missing required fields") from error
+
+    member_prefix = f"{ENSEMBLE_HOURLY_FIELD}_member"
+    member_series: list[list[Any]] = []
+    for field, values in hourly.items():
+        if not field.startswith(member_prefix):
+            continue
+        if not isinstance(values, list) or len(values) != len(times):
+            raise UpstreamError(
+                f"Open-Meteo ensemble hourly.{field} must contain exactly "
+                f"{len(times)} values"
+            )
+        member_series.append(values)
+
+    if len(member_series) < MINIMUM_ENSEMBLE_MEMBERS:
+        raise UpstreamError("Open-Meteo ensemble returned too few members")
+
+    probabilities: dict[int, float] = {}
+    significant_probabilities: dict[int, float] = {}
+    previous_epoch: int | None = None
+    for index, epoch in enumerate(times):
+        if isinstance(epoch, bool) or not isinstance(epoch, int):
+            raise UpstreamError("Open-Meteo ensemble returned an invalid hourly timestamp")
+        if previous_epoch is not None and epoch <= previous_epoch:
+            raise UpstreamError("Open-Meteo ensemble timestamps must be unique and ordered")
+        previous_epoch = epoch
+
+        usable = 0
+        wet = 0
+        significant = 0
+        for values in member_series:
+            value = values[index]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise UpstreamError("Open-Meteo ensemble member values must be numeric")
+            amount = float(value)
+            if not math.isfinite(amount) or amount < 0:
+                raise UpstreamError("Open-Meteo ensemble member values must be finite and positive")
+            usable += 1
+            if amount >= MEASURABLE_PRECIPITATION_MM:
+                wet += 1
+            if amount >= SIGNIFICANT_PRECIPITATION_MM:
+                significant += 1
+        if usable < MINIMUM_ENSEMBLE_MEMBERS:
+            continue
+        probabilities[epoch] = round(100 * wet / usable, 1)
+        significant_probabilities[epoch] = round(100 * significant / usable, 1)
+
+    if not probabilities:
+        raise UpstreamError("Open-Meteo ensemble produced no usable hours")
+
+    return {
+        "probabilities": probabilities,
+        "significant_probabilities": significant_probabilities,
+        "member_count": len(member_series),
+        "models": list(ENSEMBLE_MODELS),
+    }
+
+
+def normalize_open_meteo(
+    raw: dict[str, Any],
+    requested_timezone: str,
+    ensemble: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     try:
         if not isinstance(raw, dict):
             raise TypeError("response must be an object")
@@ -676,6 +843,27 @@ def normalize_open_meteo(raw: dict[str, Any], requested_timezone: str) -> dict[s
                 f"Open-Meteo hourly.{field} must contain exactly {len(times)} values"
             )
 
+    # An hour keeps its deterministic probability unless the ensemble covers the
+    # whole timeline, so one payload never mixes two probability definitions.
+    ensemble_probabilities: dict[int, float] = {}
+    ensemble_significant: dict[int, float] = {}
+    if isinstance(ensemble, dict):
+        candidate = ensemble.get("probabilities")
+        significant_candidate = ensemble.get("significant_probabilities")
+        if (
+            isinstance(candidate, dict)
+            and isinstance(significant_candidate, dict)
+            and all(
+                isinstance(local_time, int)
+                and not isinstance(local_time, bool)
+                and local_time in candidate
+                and local_time in significant_candidate
+                for local_time in times
+            )
+        ):
+            ensemble_probabilities = candidate
+            ensemble_significant = significant_candidate
+
     rows: list[dict[str, Any]] = []
     previous_instant: dt.datetime | None = None
     for index, local_time in enumerate(times):
@@ -687,43 +875,56 @@ def normalize_open_meteo(raw: dict[str, Any], requested_timezone: str) -> dict[s
         if previous_instant is not None and instant <= previous_instant:
             raise UpstreamError("Open-Meteo hourly timestamps must be unique and ordered")
         previous_instant = instant
-        rows.append(
-            {
-                "time": isoformat(parsed),
-                "precipitation_probability": require_number(
+        row = {
+            "time": isoformat(parsed),
+            "precipitation_probability": require_number(
+                ensemble_probabilities.get(
+                    local_time,
                     hourly["precipitation_probability"][index],
-                    "hourly.precipitation_probability",
-                    minimum=0,
-                    maximum=100,
-                ),
-                "precipitation_mm": require_number(
-                    hourly["precipitation"][index],
-                    "hourly.precipitation",
-                    minimum=0,
-                ),
-                "rain_mm": require_number(
-                    hourly["rain"][index],
-                    "hourly.rain",
-                    minimum=0,
-                ),
-                "showers_mm": require_number(
-                    hourly["showers"][index],
-                    "hourly.showers",
-                    minimum=0,
-                ),
-                "snowfall_cm": require_number(
-                    hourly["snowfall"][index],
-                    "hourly.snowfall",
-                    minimum=0,
-                ),
-                "weather_code": require_integer(
-                    hourly["weather_code"][index],
-                    "hourly.weather_code",
-                    minimum=0,
-                    maximum=99,
-                ),
-            }
-        )
+                )
+                if ensemble_probabilities
+                else hourly["precipitation_probability"][index],
+                "hourly.precipitation_probability",
+                minimum=0,
+                maximum=100,
+            ),
+            "precipitation_mm": require_number(
+                hourly["precipitation"][index],
+                "hourly.precipitation",
+                minimum=0,
+            ),
+            "rain_mm": require_number(
+                hourly["rain"][index],
+                "hourly.rain",
+                minimum=0,
+            ),
+            "showers_mm": require_number(
+                hourly["showers"][index],
+                "hourly.showers",
+                minimum=0,
+            ),
+            "snowfall_cm": require_number(
+                hourly["snowfall"][index],
+                "hourly.snowfall",
+                minimum=0,
+            ),
+            "weather_code": require_integer(
+                hourly["weather_code"][index],
+                "hourly.weather_code",
+                minimum=0,
+                maximum=99,
+            ),
+        }
+        # Only present when the ensemble covers the timeline. The app treats a
+        # missing value as "unknown" and stays on the more cautious old rule.
+        if ensemble_significant:
+            row["precipitation_probability_significant"] = require_number(
+                ensemble_significant[local_time],
+                "hourly.precipitation_probability_significant",
+                minimum=0,
+                maximum=100,
+            )
+        rows.append(row)
 
     fetched_at = utc_now()
     payload = {
@@ -745,6 +946,23 @@ def normalize_open_meteo(raw: dict[str, Any], requested_timezone: str) -> dict[s
             maximum=180,
         ),
         "timezone": requested_timezone,
+        # Informational only: older app builds ignore unknown fields, and the
+        # forecast schema itself is unchanged.
+        "probability_source": (
+            PROBABILITY_SOURCE_ENSEMBLE
+            if ensemble_probabilities
+            else PROBABILITY_SOURCE_DETERMINISTIC
+        ),
+        "ensemble_member_count": (
+            int(ensemble.get("member_count", 0))
+            if ensemble_probabilities and isinstance(ensemble, dict)
+            else 0
+        ),
+        "ensemble_models": (
+            list(ensemble.get("models", []))
+            if ensemble_probabilities and isinstance(ensemble, dict)
+            else []
+        ),
         "hourly": rows,
     }
     validate_normalized_forecast(payload, expected_timezone=requested_timezone)
@@ -857,6 +1075,13 @@ def validate_normalized_forecast(
             minimum=0,
             maximum=99,
         )
+        if "precipitation_probability_significant" in row:
+            require_number(
+                row.get("precipitation_probability_significant"),
+                f"hourly[{index}].precipitation_probability_significant",
+                minimum=0,
+                maximum=100,
+            )
 
 
 def require_number(

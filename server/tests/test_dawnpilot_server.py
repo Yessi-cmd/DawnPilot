@@ -17,11 +17,16 @@ from zoneinfo import ZoneInfo
 
 from server.dawnpilot_server import (
     CACHE_SCHEMA_VERSION,
+    ENSEMBLE_MODELS,
+    ENSEMBLE_URL,
+    UPSTREAM_URL,
     Config,
     ConfigurationError,
     ForecastCache,
     UpstreamError,
     create_handler,
+    derive_ensemble_probabilities,
+    fetch_open_meteo,
     normalize_open_meteo,
     validate_normalized_forecast,
 )
@@ -183,6 +188,226 @@ class NormalizeOpenMeteoTests(unittest.TestCase):
                 raw["latitude"] = value
                 with self.assertRaises(UpstreamError):
                     normalize_open_meteo(raw, "Asia/Shanghai")
+
+
+class EnsembleProbabilityTests(unittest.TestCase):
+    def test_probability_is_the_share_of_members_reaching_measurable_rain(self) -> None:
+        result = derive_ensemble_probabilities(make_ensemble_raw(wet_members=30))
+
+        self.assertEqual(result["member_count"], 40)
+        self.assertEqual(result["models"], list(ENSEMBLE_MODELS))
+        self.assertEqual(set(result["probabilities"].values()), {75.0})
+
+    def test_members_below_the_measurable_threshold_do_not_count_as_rain(self) -> None:
+        raw = make_ensemble_raw(wet_members=0)
+        for index in range(10):
+            raw["hourly"][f"precipitation_member{index:02d}_ecmwf_ifs025_ensemble"] = [
+                0.09,
+                0.09,
+            ]
+
+        result = derive_ensemble_probabilities(raw)
+
+        self.assertEqual(set(result["probabilities"].values()), {0.0})
+
+    def test_missing_member_values_are_ignored_until_too_few_remain(self) -> None:
+        raw = make_ensemble_raw(wet_members=40)
+        # First hour keeps 40 usable members, second hour drops below the floor.
+        for index in range(5):
+            raw["hourly"][f"precipitation_member{index:02d}_ecmwf_ifs025_ensemble"] = [
+                1.0,
+                None,
+            ]
+
+        result = derive_ensemble_probabilities(raw)
+        epochs = sorted(result["probabilities"])
+
+        self.assertEqual(len(epochs), 1)
+        self.assertEqual(result["probabilities"][epochs[0]], 100.0)
+
+    def test_rejects_too_few_members_and_invalid_values(self) -> None:
+        with self.assertRaises(UpstreamError):
+            derive_ensemble_probabilities(make_ensemble_raw(member_count=39))
+
+        negative = make_ensemble_raw()
+        negative["hourly"]["precipitation_member00_ecmwf_ifs025_ensemble"] = [-1.0, 0.0]
+        with self.assertRaises(UpstreamError):
+            derive_ensemble_probabilities(negative)
+
+        text = make_ensemble_raw()
+        text["hourly"]["precipitation_member00_ecmwf_ifs025_ensemble"] = ["1.0", 0.0]
+        with self.assertRaises(UpstreamError):
+            derive_ensemble_probabilities(text)
+
+        unordered = make_ensemble_raw()
+        unordered["hourly"]["time"] = list(reversed(unordered["hourly"]["time"]))
+        with self.assertRaises(UpstreamError):
+            derive_ensemble_probabilities(unordered)
+
+    def test_significant_probability_counts_only_commute_changing_rain(self) -> None:
+        raw = make_ensemble_raw(wet_members=0)
+        # 20 members drizzle, 10 members reach commute-changing rain.
+        for index in range(20):
+            amount = 0.6 if index < 10 else 0.2
+            raw["hourly"][f"precipitation_member{index:02d}_ecmwf_ifs025_ensemble"] = [
+                amount,
+                amount,
+            ]
+
+        result = derive_ensemble_probabilities(raw)
+
+        self.assertEqual(set(result["probabilities"].values()), {50.0})
+        self.assertEqual(set(result["significant_probabilities"].values()), {25.0})
+
+    def test_normalization_publishes_both_probabilities_per_hour(self) -> None:
+        raw = make_ensemble_raw(wet_members=0)
+        for index in range(20):
+            amount = 0.6 if index < 10 else 0.2
+            raw["hourly"][f"precipitation_member{index:02d}_ecmwf_ifs025_ensemble"] = [
+                amount,
+                amount,
+            ]
+        ensemble = derive_ensemble_probabilities(raw)
+
+        result = normalize_open_meteo(
+            make_open_meteo_raw(),
+            "Asia/Shanghai",
+            ensemble=ensemble,
+        )
+
+        for row in result["hourly"]:
+            self.assertEqual(row["precipitation_probability"], 50.0)
+            self.assertEqual(row["precipitation_probability_significant"], 25.0)
+        validate_normalized_forecast(result, expected_timezone="Asia/Shanghai")
+
+    def test_deterministic_fallback_omits_the_significant_probability(self) -> None:
+        result = normalize_open_meteo(make_open_meteo_raw(), "Asia/Shanghai")
+
+        for row in result["hourly"]:
+            self.assertNotIn("precipitation_probability_significant", row)
+        validate_normalized_forecast(result, expected_timezone="Asia/Shanghai")
+
+    def test_validation_rejects_an_out_of_range_significant_probability(self) -> None:
+        payload = normalize_open_meteo(
+            make_open_meteo_raw(),
+            "Asia/Shanghai",
+            ensemble=derive_ensemble_probabilities(make_ensemble_raw(wet_members=10)),
+        )
+        payload["hourly"][0]["precipitation_probability_significant"] = 140
+
+        with self.assertRaises(UpstreamError):
+            validate_normalized_forecast(payload, expected_timezone="Asia/Shanghai")
+
+    def test_normalization_prefers_ensemble_probability_over_deterministic(self) -> None:
+        ensemble = derive_ensemble_probabilities(make_ensemble_raw(wet_members=10))
+
+        result = normalize_open_meteo(
+            make_open_meteo_raw(),
+            "Asia/Shanghai",
+            ensemble=ensemble,
+        )
+
+        self.assertEqual(result["probability_source"], "ensemble")
+        self.assertEqual(result["ensemble_member_count"], 40)
+        self.assertEqual(result["ensemble_models"], list(ENSEMBLE_MODELS))
+        for row in result["hourly"]:
+            self.assertEqual(row["precipitation_probability"], 25.0)
+        validate_normalized_forecast(result, expected_timezone="Asia/Shanghai")
+
+    def test_partial_or_missing_ensemble_keeps_the_deterministic_probability(self) -> None:
+        full = derive_ensemble_probabilities(make_ensemble_raw(wet_members=10))
+        partial = {
+            "probabilities": {min(full["probabilities"]): 25.0},
+            "member_count": 40,
+            "models": list(ENSEMBLE_MODELS),
+        }
+
+        for ensemble in (None, partial):
+            with self.subTest(ensemble=ensemble):
+                result = normalize_open_meteo(
+                    make_open_meteo_raw(),
+                    "Asia/Shanghai",
+                    ensemble=ensemble,
+                )
+
+                self.assertEqual(result["probability_source"], "deterministic")
+                self.assertEqual(result["ensemble_member_count"], 0)
+                self.assertEqual(result["ensemble_models"], [])
+                self.assertEqual(
+                    [row["precipitation_probability"] for row in result["hourly"]],
+                    [20, 60],
+                )
+
+    def test_failed_ensemble_request_still_produces_a_forecast(self) -> None:
+        def fake_request(url, parameters, timeout_seconds):
+            if url == ENSEMBLE_URL:
+                raise UpstreamError("ensemble is unavailable")
+            return make_open_meteo_raw()
+
+        with mock.patch(
+            "server.dawnpilot_server.request_open_meteo_json",
+            side_effect=fake_request,
+        ):
+            result = fetch_open_meteo(31.25, 121.5, "Asia/Shanghai", 5)
+
+        self.assertEqual(result["probability_source"], "deterministic")
+        self.assertEqual(
+            [row["precipitation_probability"] for row in result["hourly"]],
+            [20, 60],
+        )
+
+    def test_unexpected_ensemble_exception_still_produces_a_forecast(self) -> None:
+        def fake_request(url, parameters, timeout_seconds):
+            if url == ENSEMBLE_URL:
+                raise RuntimeError("ensemble parser failed")
+            return make_open_meteo_raw()
+
+        with mock.patch(
+            "server.dawnpilot_server.request_open_meteo_json",
+            side_effect=fake_request,
+        ):
+            result = fetch_open_meteo(31.25, 121.5, "Asia/Shanghai", 5)
+
+        self.assertEqual(result["probability_source"], "deterministic")
+        self.assertEqual(
+            [row["precipitation_probability"] for row in result["hourly"]],
+            [20, 60],
+        )
+
+    def test_both_upstream_requests_are_issued_for_one_forecast(self) -> None:
+        requested_urls = []
+
+        def fake_request(url, parameters, timeout_seconds):
+            requested_urls.append(url)
+            if url == ENSEMBLE_URL:
+                return make_ensemble_raw(wet_members=40)
+            return make_open_meteo_raw()
+
+        with mock.patch(
+            "server.dawnpilot_server.request_open_meteo_json",
+            side_effect=fake_request,
+        ):
+            result = fetch_open_meteo(31.25, 121.5, "Asia/Shanghai", 5)
+
+        self.assertEqual(sorted(requested_urls), sorted([UPSTREAM_URL, ENSEMBLE_URL]))
+        self.assertEqual(result["probability_source"], "ensemble")
+        self.assertEqual(
+            [row["precipitation_probability"] for row in result["hourly"]],
+            [100.0, 100.0],
+        )
+
+    def test_deterministic_failure_still_fails_the_fetch(self) -> None:
+        def fake_request(url, parameters, timeout_seconds):
+            if url == UPSTREAM_URL:
+                raise UpstreamError("deterministic forecast is unavailable")
+            return make_ensemble_raw(wet_members=40)
+
+        with mock.patch(
+            "server.dawnpilot_server.request_open_meteo_json",
+            side_effect=fake_request,
+        ):
+            with self.assertRaises(UpstreamError):
+                fetch_open_meteo(31.25, 121.5, "Asia/Shanghai", 5)
 
 
 class NormalizedForecastValidationTests(unittest.TestCase):
@@ -651,6 +876,21 @@ def make_open_meteo_raw():
             "weather_code": [2, 61],
         },
     }
+
+
+def make_ensemble_raw(member_count=40, wet_members=0):
+    """Ensemble response matching make_open_meteo_raw's two hours."""
+    first_hour = int(
+        dt.datetime(2026, 7, 15, 23, tzinfo=dt.timezone.utc).timestamp()
+    )
+    hourly = {"time": [first_hour, first_hour + 3600]}
+    for index in range(member_count):
+        amount = 1.0 if index < wet_members else 0.0
+        hourly[f"precipitation_member{index:02d}_ecmwf_ifs025_ensemble"] = [
+            amount,
+            amount,
+        ]
+    return {"latitude": 31.25, "longitude": 121.5, "hourly": hourly}
 
 
 def make_payload(latitude, longitude, timezone, hour_count=1):

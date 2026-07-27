@@ -242,7 +242,7 @@ private struct DashboardProtectionCard: View {
                     .background(.white.opacity(0.08), in: Circle())
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(futureRecords.isEmpty ? "保底守护尚未开启" : "未来 14 天守护已开启")
+                    Text(futureRecords.isEmpty ? "保底守护尚未开启" : "未来闹钟守护已开启")
                         .font(.subheadline.weight(.semibold))
                     Text(protectionDetail)
                         .font(.caption)
@@ -669,7 +669,7 @@ private struct RefreshDock: View {
                 .disabled(model.isWorking)
 
                 NavigationLink(value: ContentView.Route.automation) {
-                    Label("每晚自动更新设置", systemImage: "clock.badge.checkmark")
+                    Label("自动更新设置", systemImage: "clock.badge.checkmark")
                         .labelStyle(.iconOnly)
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(.white)
@@ -684,7 +684,7 @@ private struct RefreshDock: View {
 
     private var primaryActionTitle: String {
         if model.isWorking { return "正在更新…" }
-        return isAuthorized ? "更新明日闹钟" : "开启守护"
+        return isAuthorized ? "立即更新闹钟" : "开启守护"
     }
 
     private func performPrimaryAction() {
@@ -721,12 +721,17 @@ struct AutomationGuideView: View {
                     AutomationStep(
                         number: 3,
                         title: "添加晨航动作",
-                        detail: "选择“更新明日闹钟”，设为立即运行并关闭运行前询问。"
+                        detail: "选择“更新起床闹钟”，设为立即运行并关闭运行前询问。"
+                    )
+                    AutomationStep(
+                        number: 4,
+                        title: "再建一条每天 06:00",
+                        detail: "同样的动作。清晨的预报比前一晚准得多，会在响铃前校准今天的闹钟。"
                     )
                 }
 
                 Label(
-                    "系统后台刷新会额外尝试，但每晚自动化仍是主要更新方式。",
+                    "清晨校准只在距离最早闹钟还有 15 分钟以上时才会改动闹钟；系统后台刷新会额外尝试，但两条自动化仍是主要更新方式。",
                     systemImage: "info.circle.fill"
                 )
                 .font(.footnote)
@@ -736,7 +741,7 @@ struct AutomationGuideView: View {
             }
             .padding(20)
         }
-        .navigationTitle("每晚自动更新")
+        .navigationTitle("自动更新闹钟")
         .navigationBarTitleDisplayMode(.inline)
     }
 }

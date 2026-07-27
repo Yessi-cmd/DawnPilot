@@ -984,6 +984,54 @@ final class AlarmCoordinatorTests: XCTestCase {
         assertPendingReplacementExists(phase: .prepared)
     }
 
+    func testCancellationWhileQueuedDoesNotStartOperation() async throws {
+        var configuredSettings = weatherReadySettings()
+        configuredSettings.enabledWeekdays = Set(1...7)
+        let settings = configuredSettings
+        let operationNow = try XCTUnwrap(now)
+        let gate = AsyncStartGate()
+        let driver = FakeAlarmDriver(scheduleGate: gate)
+        let weatherService = CountingForecastService()
+        let coordinator = AlarmCoordinator(
+            alarmDriver: driver,
+            weatherService: weatherService,
+            credentialStore: credentialStore,
+            defaultsSuiteName: suiteName
+        )
+
+        let first = Task {
+            try await coordinator.authorizeAndPrepare(
+                settings: settings,
+                now: operationNow
+            )
+        }
+        await gate.waitUntilStarted()
+        let authorizationCallsBeforeSecond = await driver.authorizationStateCalls()
+
+        let second = Task {
+            try await coordinator.refreshUpcoming(
+                settings: settings,
+                now: operationNow
+            )
+        }
+        await Task.yield()
+        second.cancel()
+        first.cancel()
+
+        _ = try? await first.value
+        do {
+            _ = try await second.value
+            XCTFail("A cancelled queued operation must not execute.")
+        } catch is CancellationError {
+            // Expected.
+        }
+
+        let authorizationCallsAfterSecond = await driver.authorizationStateCalls()
+        let fetchCount = await weatherService.currentFetchCount()
+        XCTAssertEqual(authorizationCallsAfterSecond, authorizationCallsBeforeSecond)
+        XCTAssertEqual(fetchCount, 0)
+    }
+
     func testMorningHorizonRefreshKeepsVerifiedAlarmLaterToday() async throws {
         var settings = AppSettings()
         settings.timeZoneIdentifier = "Asia/Shanghai"
@@ -1130,7 +1178,7 @@ final class AlarmCoordinatorTests: XCTestCase {
             defaultsSuiteName: suiteName
         )
 
-        let status = try await coordinator.refreshTomorrow(
+        let status = try await coordinator.refreshUpcoming(
             settings: settings,
             now: operationNow
         )
@@ -1151,6 +1199,306 @@ final class AlarmCoordinatorTests: XCTestCase {
         )
     }
 
+    func testMorningRefreshCorrectsTodayAlarmBeforeItRings() async throws {
+        var settings = weatherReadySettings()
+        let localCalendar = settings.calendar
+        let operationNow = try XCTUnwrap(localCalendar.date(from: DateComponents(
+            year: 2026,
+            month: 7,
+            day: 27,
+            hour: 6
+        )))
+        let today = localCalendar.startOfDay(for: operationNow)
+        let existingFireDate = try XCTUnwrap(
+            settings.fallbackAlarmTime.alarmDate(on: today, calendar: localCalendar)
+        )
+        let existing = makeRecord(dateKey: "2026-07-27", fireDate: existingFireDate)
+        try SettingsStore.saveRecordsThrowing([existing], defaults: defaults)
+        settings.enabledWeekdays = Set(1...7)
+
+        let driver = FakeAlarmDriver(alarms: [systemAlarm(for: existing)])
+        let coordinator = AlarmCoordinator(
+            alarmDriver: driver,
+            weatherService: StaticForecastService(
+                forecast: rainyForecast(
+                    on: today,
+                    settings: settings,
+                    calendar: localCalendar,
+                    now: operationNow
+                )
+            ),
+            defaultsSuiteName: suiteName
+        )
+
+        let status = try await coordinator.refreshUpcoming(
+            settings: settings,
+            now: operationNow
+        )
+
+        let expectedFireDate = try XCTUnwrap(
+            settings.rainyAlarmTime.alarmDate(on: today, calendar: localCalendar)
+        )
+        let snapshot = await coordinator.snapshot(now: operationNow)
+        let currentAlarmIDs = await driver.currentAlarmIDs()
+        XCTAssertEqual(status.outcome, .rainy)
+        XCTAssertEqual(status.alarmDate, expectedFireDate)
+        XCTAssertTrue(status.message.contains("今日闹钟"))
+        XCTAssertEqual(
+            snapshot.records.first { $0.dateKey == "2026-07-27" }?.fireDate,
+            expectedFireDate
+        )
+        XCTAssertFalse(currentAlarmIDs.contains(existing.alarmID))
+        assertPendingReplacementWasCleared()
+    }
+
+    func testMorningWeatherFailureCreatesTodayFallbackWhenRecordIsMissing() async throws {
+        var settings = weatherReadySettings()
+        settings.enabledWeekdays = Set(1...7)
+        let localCalendar = settings.calendar
+        let morning = try XCTUnwrap(localCalendar.date(from: DateComponents(
+            year: 2026,
+            month: 7,
+            day: 27,
+            hour: 6
+        )))
+        let today = localCalendar.startOfDay(for: morning)
+        let expectedFireDate = try XCTUnwrap(
+            settings.fallbackAlarmTime.alarmDate(on: today, calendar: localCalendar)
+        )
+        let driver = FakeAlarmDriver()
+        let weatherService = CountingForecastService()
+        let coordinator = AlarmCoordinator(
+            alarmDriver: driver,
+            weatherService: weatherService,
+            credentialStore: credentialStore,
+            defaultsSuiteName: suiteName
+        )
+
+        let status = try await coordinator.refreshUpcoming(
+            settings: settings,
+            now: morning
+        )
+
+        let snapshot = await coordinator.snapshot(now: morning)
+        let todayRecords = snapshot.records.filter {
+            localCalendar.isDate($0.fireDate, inSameDayAs: today)
+        }
+        let todayAlarms = await driver.currentAlarms().filter {
+            guard let fireDate = $0.fireDate else { return false }
+            return localCalendar.isDate(fireDate, inSameDayAs: today)
+        }
+        XCTAssertEqual(status.outcome, .fallback)
+        XCTAssertEqual(status.alarmDate, expectedFireDate)
+        XCTAssertEqual(todayRecords.count, 1)
+        XCTAssertEqual(todayRecords.first?.fireDate, expectedFireDate)
+        XCTAssertEqual(todayRecords.first?.kind, .fallback)
+        XCTAssertEqual(todayAlarms.count, 1)
+        XCTAssertEqual(todayAlarms.first?.fireDate, expectedFireDate)
+        let fetchCount = await weatherService.currentFetchCount()
+        XCTAssertEqual(fetchCount, 1)
+    }
+
+    func testMorningWeatherFailureAdoptsUnknownTodayAlarmWithoutDuplicatingIt() async throws {
+        var settings = weatherReadySettings()
+        settings.enabledWeekdays = Set(1...7)
+        let localCalendar = settings.calendar
+        let morning = try XCTUnwrap(localCalendar.date(from: DateComponents(
+            year: 2026,
+            month: 7,
+            day: 27,
+            hour: 6
+        )))
+        let today = localCalendar.startOfDay(for: morning)
+        let existingFireDate = try XCTUnwrap(
+            settings.fallbackAlarmTime.alarmDate(on: today, calendar: localCalendar)
+        )
+        let unknown = SystemAlarmSnapshot(
+            id: UUID(),
+            fireDate: existingFireDate,
+            state: .scheduled
+        )
+        let driver = FakeAlarmDriver(alarms: [unknown])
+        let coordinator = AlarmCoordinator(
+            alarmDriver: driver,
+            weatherService: CountingForecastService(),
+            credentialStore: credentialStore,
+            defaultsSuiteName: suiteName
+        )
+
+        _ = try await coordinator.refreshUpcoming(settings: settings, now: morning)
+
+        let snapshot = await coordinator.snapshot(now: morning)
+        let todayRecords = snapshot.records.filter {
+            localCalendar.isDate($0.fireDate, inSameDayAs: today)
+        }
+        let todayAlarms = await driver.currentAlarms().filter {
+            guard let fireDate = $0.fireDate else { return false }
+            return localCalendar.isDate(fireDate, inSameDayAs: today)
+        }
+        XCTAssertEqual(todayRecords.count, 1)
+        XCTAssertEqual(todayRecords.first?.alarmID, unknown.id)
+        XCTAssertEqual(todayAlarms.count, 1)
+        XCTAssertEqual(todayAlarms.first?.id, unknown.id)
+        XCTAssertEqual(todayAlarms.first?.fireDate, existingFireDate)
+    }
+
+    func testMorningCorrectionKeepsTheEarlierAlarmWhenEvidenceIsWeak() async throws {
+        var settings = weatherReadySettings()
+        settings.enabledWeekdays = Set(1...7)
+        settings.precipitationProbabilityThreshold = 25
+        let localCalendar = settings.calendar
+        let operationNow = try XCTUnwrap(localCalendar.date(from: DateComponents(
+            year: 2026,
+            month: 7,
+            day: 27,
+            hour: 6
+        )))
+        let today = localCalendar.startOfDay(for: operationNow)
+        let rainyFireDate = try XCTUnwrap(
+            settings.rainyAlarmTime.alarmDate(on: today, calendar: localCalendar)
+        )
+        let existing = makeRecord(
+            dateKey: "2026-07-27",
+            fireDate: rainyFireDate,
+            kind: .rainy
+        )
+        try SettingsStore.saveRecordsThrowing([existing], defaults: defaults)
+
+        // Morning forecast softened to drizzle: the hedge time is later than the
+        // alarm already scheduled, so the earlier alarm must survive.
+        let driver = FakeAlarmDriver(alarms: [systemAlarm(for: existing)])
+        let coordinator = AlarmCoordinator(
+            alarmDriver: driver,
+            weatherService: StaticForecastService(
+                forecast: drizzleForecast(
+                    on: today,
+                    settings: settings,
+                    calendar: localCalendar,
+                    now: operationNow
+                )
+            ),
+            defaultsSuiteName: suiteName
+        )
+
+        let status = try await coordinator.refreshUpcoming(
+            settings: settings,
+            now: operationNow
+        )
+
+        let snapshot = await coordinator.snapshot(now: operationNow)
+        let currentAlarmIDs = await driver.currentAlarmIDs()
+        XCTAssertEqual(status.alarmDate, rainyFireDate)
+        XCTAssertTrue(status.message.contains("保留今日更早的"))
+        XCTAssertEqual(
+            snapshot.records.first { $0.dateKey == "2026-07-27" }?.alarmID,
+            existing.alarmID
+        )
+        XCTAssertTrue(currentAlarmIDs.contains(existing.alarmID))
+    }
+
+    func testMorningCorrectionStillDelaysTheAlarmWhenTheWindowIsDry() async throws {
+        var settings = weatherReadySettings()
+        settings.enabledWeekdays = Set(1...7)
+        settings.precipitationProbabilityThreshold = 25
+        let localCalendar = settings.calendar
+        let operationNow = try XCTUnwrap(localCalendar.date(from: DateComponents(
+            year: 2026,
+            month: 7,
+            day: 27,
+            hour: 6
+        )))
+        let today = localCalendar.startOfDay(for: operationNow)
+        let rainyFireDate = try XCTUnwrap(
+            settings.rainyAlarmTime.alarmDate(on: today, calendar: localCalendar)
+        )
+        let existing = makeRecord(
+            dateKey: "2026-07-27",
+            fireDate: rainyFireDate,
+            kind: .rainy
+        )
+        try SettingsStore.saveRecordsThrowing([existing], defaults: defaults)
+
+        let driver = FakeAlarmDriver(alarms: [systemAlarm(for: existing)])
+        let coordinator = AlarmCoordinator(
+            alarmDriver: driver,
+            weatherService: StaticForecastService(
+                forecast: dryForecast(
+                    on: today,
+                    settings: settings,
+                    calendar: localCalendar,
+                    now: operationNow
+                )
+            ),
+            defaultsSuiteName: suiteName
+        )
+
+        let status = try await coordinator.refreshUpcoming(
+            settings: settings,
+            now: operationNow
+        )
+
+        let expected = try XCTUnwrap(
+            settings.clearAlarmTime.alarmDate(on: today, calendar: localCalendar)
+        )
+        XCTAssertEqual(status.outcome, .clear)
+        XCTAssertEqual(status.alarmDate, expected)
+    }
+
+    func testRefreshLeavesTodayAlarmAloneOnceItIsImminent() async throws {
+        var settings = weatherReadySettings()
+        settings.enabledWeekdays = Set(1...7)
+        let localCalendar = settings.calendar
+        let operationNow = try XCTUnwrap(localCalendar.date(from: DateComponents(
+            year: 2026,
+            month: 7,
+            day: 27,
+            hour: 7,
+            minute: 45
+        )))
+        let today = localCalendar.startOfDay(for: operationNow)
+        let tomorrow = try XCTUnwrap(
+            localCalendar.date(byAdding: .day, value: 1, to: today)
+        )
+        let existingFireDate = try XCTUnwrap(
+            settings.fallbackAlarmTime.alarmDate(on: today, calendar: localCalendar)
+        )
+        let existing = makeRecord(dateKey: "2026-07-27", fireDate: existingFireDate)
+        try SettingsStore.saveRecordsThrowing([existing], defaults: defaults)
+
+        let driver = FakeAlarmDriver(alarms: [systemAlarm(for: existing)])
+        let coordinator = AlarmCoordinator(
+            alarmDriver: driver,
+            weatherService: StaticForecastService(
+                forecast: rainyForecast(
+                    on: tomorrow,
+                    settings: settings,
+                    calendar: localCalendar,
+                    now: operationNow
+                )
+            ),
+            defaultsSuiteName: suiteName
+        )
+
+        let status = try await coordinator.refreshUpcoming(
+            settings: settings,
+            now: operationNow
+        )
+
+        let expectedFireDate = try XCTUnwrap(
+            settings.rainyAlarmTime.alarmDate(on: tomorrow, calendar: localCalendar)
+        )
+        let snapshot = await coordinator.snapshot(now: operationNow)
+        let currentAlarmIDs = await driver.currentAlarmIDs()
+        XCTAssertEqual(status.outcome, .rainy)
+        XCTAssertEqual(status.alarmDate, expectedFireDate)
+        XCTAssertFalse(status.message.contains("今日闹钟"))
+        XCTAssertEqual(
+            snapshot.records.first { $0.dateKey == "2026-07-27" }?.fireDate,
+            existingFireDate
+        )
+        XCTAssertTrue(currentAlarmIDs.contains(existing.alarmID))
+    }
+
     func testEveryRefreshTriggerPreservesFallbackForUnconfirmedExampleLocation() async throws {
         var settings = AppSettings()
         settings.bearerToken = "test-token"
@@ -1164,7 +1512,7 @@ final class AlarmCoordinatorTests: XCTestCase {
             defaultsSuiteName: suiteName
         )
 
-        let status = try await coordinator.refreshTomorrow(
+        let status = try await coordinator.refreshUpcoming(
             settings: settings,
             now: now
         )
@@ -1191,7 +1539,7 @@ final class AlarmCoordinatorTests: XCTestCase {
             defaultsSuiteName: suiteName
         )
 
-        let status = try await coordinator.refreshTomorrow(
+        let status = try await coordinator.refreshUpcoming(
             settings: settings,
             now: now
         )
@@ -1375,6 +1723,106 @@ final class AlarmCoordinatorTests: XCTestCase {
         )
     }
 
+    private func weatherReadySettings() -> AppSettings {
+        var settings = AppSettings()
+        settings.timeZoneIdentifier = "Asia/Shanghai"
+        settings.bearerToken = "test-token"
+        settings.exampleLocationConfirmed = true
+        return settings
+    }
+
+    /// A forecast that covers the whole decision window of `day` with rain.
+    private func rainyForecast(
+        on day: Date,
+        settings: AppSettings,
+        calendar: Calendar,
+        now: Date
+    ) -> ServerForecast {
+        makeWindowForecast(
+            on: day,
+            settings: settings,
+            calendar: calendar,
+            now: now,
+            probability: 90,
+            significantProbability: 80,
+            precipitation: 1.2,
+            weatherCode: 63
+        )
+    }
+
+    /// Drizzle: measurable, but nowhere near commute-changing rain.
+    private func drizzleForecast(
+        on day: Date,
+        settings: AppSettings,
+        calendar: Calendar,
+        now: Date
+    ) -> ServerForecast {
+        makeWindowForecast(
+            on: day,
+            settings: settings,
+            calendar: calendar,
+            now: now,
+            probability: 70,
+            significantProbability: 6,
+            precipitation: 0.2,
+            weatherCode: 51
+        )
+    }
+
+    private func dryForecast(
+        on day: Date,
+        settings: AppSettings,
+        calendar: Calendar,
+        now: Date
+    ) -> ServerForecast {
+        makeWindowForecast(
+            on: day,
+            settings: settings,
+            calendar: calendar,
+            now: now,
+            probability: 6,
+            significantProbability: 1,
+            precipitation: 0,
+            weatherCode: 1
+        )
+    }
+
+    private func makeWindowForecast(
+        on day: Date,
+        settings: AppSettings,
+        calendar: Calendar,
+        now: Date,
+        probability: Double,
+        significantProbability: Double,
+        precipitation: Double,
+        weatherCode: Int
+    ) -> ServerForecast {
+        ServerForecast(
+            schemaVersion: 1,
+            source: "test",
+            fetchedAt: now,
+            servedAt: now,
+            stale: false,
+            latitude: settings.latitude,
+            longitude: settings.longitude,
+            timezone: settings.timeZoneIdentifier,
+            hourly: [7, 8].map { hour in
+                var components = calendar.dateComponents([.year, .month, .day], from: day)
+                components.hour = hour
+                return ForecastHour(
+                    time: calendar.date(from: components)!,
+                    precipitationProbability: probability,
+                    significantPrecipitationProbability: significantProbability,
+                    precipitationMM: precipitation,
+                    rainMM: precipitation,
+                    showersMM: 0,
+                    snowfallCM: 0,
+                    weatherCode: weatherCode
+                )
+            }
+        )
+    }
+
     private func makeCoordinator(driver: FakeAlarmDriver) throws -> AlarmCoordinator {
         AlarmCoordinator(
             alarmDriver: driver,
@@ -1518,6 +1966,7 @@ private struct StaticForecastService: ForecastFetching {
 
 private actor FakeAlarmDriver: AlarmScheduling {
     private var authorization: AlarmAuthorization
+    private var authorizationStateCallCount = 0
     private var storedAlarms: [UUID: SystemAlarmSnapshot]
     private var recordsScheduledByTest: [ManagedAlarmRecord] = []
     private var cancelFailureIDs: Set<UUID> = []
@@ -1537,7 +1986,8 @@ private actor FakeAlarmDriver: AlarmScheduling {
     }
 
     func authorizationState() -> AlarmAuthorization {
-        authorization
+        authorizationStateCallCount += 1
+        return authorization
     }
 
     func requestAuthorization() -> AlarmAuthorization {
@@ -1588,6 +2038,10 @@ private actor FakeAlarmDriver: AlarmScheduling {
 
     func currentAlarmIDs() -> Set<UUID> {
         Set(storedAlarms.keys)
+    }
+
+    func authorizationStateCalls() -> Int {
+        authorizationStateCallCount
     }
 
     func scheduledRecords() -> [ManagedAlarmRecord] {

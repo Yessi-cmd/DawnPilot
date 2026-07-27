@@ -16,14 +16,25 @@ them:
   to Apple's Clock app and does not create standalone Apple Watch alarms.
 - The VPS fetches and normalizes weather. The iPhone owns user settings,
   evaluates the forecast, and chooses the alarm time locally.
-- A nightly Shortcuts automation is the primary refresh trigger. BackgroundTasks
-  is best effort only and must never be presented as guaranteed execution.
+- Shortcuts automations are the primary refresh triggers: a nightly run prepares
+  tomorrow's alarm, and an early-morning run corrects today's alarm with a shorter
+  forecast lead time. BackgroundTasks is best effort only and must never be
+  presented as guaranteed execution.
+- One App Intent serves both runs and picks the target day itself. A same-day
+  correction is allowed only while every possible outcome for that day and the
+  alarm already scheduled for it are at least `AppSettings.minimumCorrectionLead`
+  in the future; otherwise the refresh targets tomorrow.
 - The app maintains a 14-day horizon of one-off fallback alarms so a failed
   weather request or missed automation does not leave the user without an alarm.
 - Location is a fixed, user-editable latitude/longitude. Do not add live location,
   APNs, holiday calendars, or address search unless explicitly requested.
-- Default rules are rainy `07:50`, unknown/failure `08:00`, clear `08:05`,
-  forecast window `07:00..<09:00`, precipitation threshold `40%`, Monday-Friday.
+- Default rules are significant rain `07:50`, drizzle/uncertain/failure `08:00`,
+  clear `08:05`, forecast window `07:00..<09:00`, precipitation threshold `25%`,
+  Monday-Friday. The threshold is deliberately below a coin flip: waking up late
+  in rain costs more than the 15 minutes of sleep, so the decision point sits
+  where the two expected costs balance, not where rain is "likely".
+- A morning correction may always move an alarm earlier. It may only move an
+  alarm later when the new decision is `clear`.
 - The default server base URL may be public, but the Bearer token must remain
   empty in source and be entered by the user at runtime.
 
@@ -33,6 +44,8 @@ them:
   deployment target, and generated Info.plist properties.
 - `DawnPilot/`: SwiftUI app, models, App Intent, weather evaluation, persistence,
   background refresh, and AlarmKit coordination.
+- `DawnPilot/Services/RefreshTargetResolver.swift`: pure rules for choosing
+  between tomorrow's alarm and a same-day morning correction.
 - `DawnPilotTests/`: deterministic protocol and precipitation-rule tests.
 - `server/`: dependency-free Python weather proxy, tests, systemd unit, environment
   template, and Caddy example.
@@ -63,9 +76,22 @@ them:
 - Use `AppSettings.calendar` for date, weekday, and alarm calculations. Do not use
   the process timezone for user-visible scheduling logic.
 - The forecast window is half-open: start is included and end is excluded.
-- A forecast is rainy when any matching hour reaches the configured probability,
-  contains at least `0.1` measurable precipitation, or has a precipitation WMO
-  code. A forecast older than six hours or missing target hours is a failure.
+- The window decision has three tiers. It is rainy when any matching hour reaches
+  the configured probability of significant rain, has at least `0.5` mm, or has a
+  moderate-or-heavier WMO code. It takes the hedge (fallback) time when only the
+  measurable signals apply: the configured probability of `0.1` mm, at least
+  `0.1` mm, or a drizzle/slight WMO code. Otherwise it is clear.
+- `precipitation_probability_significant` is optional. When any matching hour
+  lacks it, the evaluator falls back to the older single-tier rule, which errs
+  toward the earlier alarm. A degraded server must never delay an alarm.
+- A forecast older than six hours or missing target hours is a failure.
+- `RefreshTargetResolver` owns target-day selection and must stay free of
+  AlarmKit and UI dependencies so it remains directly testable. A refresh must
+  never move an alarm to a time at or before `now`, and must not reschedule an
+  alarm that is already inside the correction lead window.
+- The App Intent type name `RefreshTomorrowAlarmIntent` is the identity that the
+  user's existing Shortcuts automations refer to. Change its title or description,
+  never the type name.
 - There must be at most one managed record per local date key. Replacement must
   schedule the new alarm before canceling the old alarm and must not leave both
   records persisted after an error.
@@ -100,7 +126,13 @@ them:
   comparison.
 - Validate latitude, longitude, and IANA timezone before fetching upstream data.
 - Preserve schema version `1` compatibility unless the app and server are migrated
-  together.
+  together. New payload fields must stay optional and informational.
+- `precipitation_probability` is the share of ensemble members reaching 0.1 mm,
+  fetched from the ensemble API in parallel with the deterministic forecast.
+  Amounts and weather codes stay deterministic. The ensemble leg must remain
+  optional: too few members, incomplete hour coverage, or a failed request falls
+  back to the deterministic probability and records it in `probability_source`.
+  Never let a failed ensemble request fail the whole forecast.
 - Keep the last known good forecast and serve it with `stale: true` when upstream
   refresh fails. Cache writes must remain atomic.
 - Bind the Python service to `127.0.0.1:8787`; expose it only through HTTPS via a
