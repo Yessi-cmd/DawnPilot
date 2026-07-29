@@ -707,11 +707,31 @@ struct AutomationGuideView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 24)
 
+                VStack(alignment: .leading, spacing: 8) {
+                    Label(
+                        "必须手动设置快捷指令",
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .font(.headline)
+                    .foregroundStyle(.orange)
+
+                    Text(
+                        "晨航无法自行在固定时间唤醒并联网。请完成下面两条个人自动化；"
+                            + "否则 07:00 不会自动获取天气。"
+                    )
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(16)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18))
+                .accessibilityElement(children: .combine)
+
                 VStack(spacing: 14) {
                     AutomationStep(
                         number: 1,
-                        title: "创建个人自动化",
-                        detail: "在快捷指令中选择“时间”作为触发条件。"
+                        title: "必须创建个人自动化",
+                        detail: "打开快捷指令，在“自动化”中选择“时间”作为触发条件。"
                     )
                     AutomationStep(
                         number: 2,
@@ -725,13 +745,13 @@ struct AutomationGuideView: View {
                     )
                     AutomationStep(
                         number: 4,
-                        title: "再建一条每天 06:00",
-                        detail: "同样的动作。清晨的预报比前一晚准得多，会在响铃前校准今天的闹钟。"
+                        title: "再建一条每天 07:00",
+                        detail: "添加同样的动作，使用更接近通勤时段的预报校准今天的闹钟。"
                     )
                 }
 
                 Label(
-                    "清晨校准只在距离最早闹钟还有 15 分钟以上时才会改动闹钟；系统后台刷新会额外尝试，但两条自动化仍是主要更新方式。",
+                    "快捷指令自动化是 22:30 和 07:00 定时更新的必要条件。清晨校准只在距离最早闹钟还有 15 分钟以上时才会改动；系统后台刷新仅作额外尝试。",
                     systemImage: "info.circle.fill"
                 )
                 .font(.footnote)

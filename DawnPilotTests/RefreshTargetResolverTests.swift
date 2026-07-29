@@ -30,9 +30,9 @@ final class RefreshTargetResolverTests: XCTestCase {
         XCTAssertEqual(dayComponents(target.day), DateComponents(year: 2026, month: 7, day: 28))
     }
 
-    func testEarlyMorningRunCorrectsToday() throws {
-        // Monday 06:00, well before the 07:50 rainy alarm.
-        let now = try date(year: 2026, month: 7, day: 27, hour: 6, minute: 0)
+    func testSevenAMRunCorrectsToday() throws {
+        // Monday 07:00, still 50 minutes before the earliest possible alarm.
+        let now = try date(year: 2026, month: 7, day: 27, hour: 7, minute: 0)
         let target = try XCTUnwrap(resolve(now: now))
 
         XCTAssertTrue(target.isSameDayCorrection)
