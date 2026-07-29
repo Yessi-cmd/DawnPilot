@@ -216,6 +216,7 @@ enum SettingsStore {
     private static let legacyStatusKey = "dawnPilot.status.v1"
     private static let pendingReplacementKey = "dawnPilot.pendingReplacement.v1"
     private static let pendingBulkRebuildKey = "dawnPilot.bulkRebuild.v1"
+    private static let suppressedAlarmDatesKey = "dawnPilot.suppressedAlarmDates.v1"
     private static let issueKey = "dawnPilot.persistenceIssue.v1"
 
     private static let settingsArea = "设置"
@@ -223,6 +224,7 @@ enum SettingsStore {
     private static let statusArea = "刷新状态"
     private static let pendingReplacementArea = "闹钟替换事务"
     private static let pendingBulkRebuildArea = "批量闹钟重建事务"
+    private static let suppressedAlarmDatesArea = "已删除闹钟日期"
 
     static func loadSettings(
         defaults: UserDefaults = .standard,
@@ -404,6 +406,49 @@ enum SettingsStore {
         let payload = VersionedPayload(version: currentStorageVersion, value: records)
         defaults.set(try encode(payload), forKey: recordsKey)
         defaults.removeObject(forKey: legacyRecordsKey)
+    }
+
+    static func loadSuppressedAlarmDateKeysResult(
+        defaults: UserDefaults = .standard
+    ) -> Result<Set<String>, SettingsStoreError> {
+        guard let data = defaults.data(forKey: suppressedAlarmDatesKey) else {
+            return .success([])
+        }
+        do {
+            let payload: VersionedPayload<[String]> = try decode(
+                VersionedPayload<[String]>.self,
+                data: data
+            )
+            guard payload.version == currentStorageVersion else {
+                throw SettingsStoreError.unsupportedVersion(
+                    area: suppressedAlarmDatesArea,
+                    version: payload.version
+                )
+            }
+            let dateKeys = Set(payload.value)
+            guard dateKeys.count == payload.value.count else {
+                throw SettingsStoreError.invalidRecords(
+                    "已删除闹钟日期包含重复值。"
+                )
+            }
+            try validateSuppressedAlarmDateKeys(dateKeys)
+            return .success(dateKeys)
+        } catch {
+            return .failure(normalized(error, area: suppressedAlarmDatesArea))
+        }
+    }
+
+    static func saveSuppressedAlarmDateKeysThrowing(
+        _ dateKeys: Set<String>,
+        defaults: UserDefaults = .standard
+    ) throws {
+        try validateSuppressedAlarmDateKeys(dateKeys)
+        let payload = VersionedPayload(
+            version: currentStorageVersion,
+            value: dateKeys.sorted()
+        )
+        defaults.set(try encode(payload), forKey: suppressedAlarmDatesKey)
+        clearIssue(area: suppressedAlarmDatesArea, defaults: defaults)
     }
 
     static func loadStatus(defaults: UserDefaults = .standard) -> RefreshStatus {
@@ -811,6 +856,41 @@ enum SettingsStore {
         let alarmIDs = Set(records.map(\.alarmID))
         guard alarmIDs.count == records.count else {
             throw SettingsStoreError.invalidRecords("同一 AlarmKit 标识被重复使用。")
+        }
+    }
+
+    private static func validateSuppressedAlarmDateKeys(
+        _ dateKeys: Set<String>
+    ) throws {
+        guard dateKeys.count <= 64 else {
+            throw SettingsStoreError.invalidRecords("已删除闹钟日期数量超出安全上限。")
+        }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .gmt
+        let allValid = dateKeys.allSatisfy { dateKey in
+            let parts = dateKey.split(separator: "-", omittingEmptySubsequences: false)
+            guard dateKey.count == 10,
+                  parts.count == 3,
+                  parts[0].count == 4,
+                  parts[1].count == 2,
+                  parts[2].count == 2,
+                  let year = Int(parts[0]),
+                  let month = Int(parts[1]),
+                  let day = Int(parts[2]) else {
+                return false
+            }
+            let components = DateComponents(year: year, month: month, day: day)
+            guard (1...9_999).contains(year),
+                  let date = calendar.date(from: components) else {
+                return false
+            }
+            let resolved = calendar.dateComponents([.year, .month, .day], from: date)
+            return resolved.year == year
+                && resolved.month == month
+                && resolved.day == day
+        }
+        guard allValid else {
+            throw SettingsStoreError.invalidRecords("已删除闹钟日期格式无效。")
         }
     }
 

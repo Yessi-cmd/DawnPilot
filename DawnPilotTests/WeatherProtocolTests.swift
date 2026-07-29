@@ -417,6 +417,38 @@ final class SettingsStoreTests: XCTestCase {
         }
     }
 
+    func testSuppressedAlarmDateKeysRoundTrip() throws {
+        let expected: Set<String> = ["2026-07-25", "2026-07-28"]
+
+        try SettingsStore.saveSuppressedAlarmDateKeysThrowing(
+            expected,
+            defaults: defaults
+        )
+
+        switch SettingsStore.loadSuppressedAlarmDateKeysResult(defaults: defaults) {
+        case .success(let loaded):
+            XCTAssertEqual(loaded, expected)
+        case .failure(let error):
+            XCTFail("Unexpected suppression load failure: \(error)")
+        }
+    }
+
+    func testInvalidSuppressedAlarmDateKeyIsRejected() {
+        defaults.set(
+            Data(#"{"version":2,"value":["2026-02-31"]}"#.utf8),
+            forKey: "dawnPilot.suppressedAlarmDates.v1"
+        )
+
+        switch SettingsStore.loadSuppressedAlarmDateKeysResult(defaults: defaults) {
+        case .success:
+            XCTFail("Invalid deleted dates must not allow automatic alarm recreation.")
+        case .failure(let error):
+            guard case .invalidRecords = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+        }
+    }
+
     func testJSONShapedLegacyTokenCannotMasqueradeAsCredentialEnvelope() throws {
         let token = #"{"format":"dawnpilot-credential-envelope-v1","current":null,"pending":null}"#
 
@@ -775,6 +807,144 @@ final class AlarmCoordinatorTests: XCTestCase {
 
         XCTAssertFalse(firstSnapshot.alarmsVerified)
         XCTAssertFalse(secondSnapshot.alarmsVerified)
+    }
+
+    func testDeletedAlarmIsCancelledAndAutomaticRefreshDoesNotRecreateItsDate() async throws {
+        var settings = AppSettings()
+        settings.enabledWeekdays = Set(1...7)
+        let tomorrow = try XCTUnwrap(
+            settings.calendar.date(byAdding: .day, value: 1, to: now)
+        )
+        let fireDate = try XCTUnwrap(
+            settings.fallbackAlarmTime.alarmDate(
+                on: tomorrow,
+                calendar: settings.calendar
+            )
+        )
+        let record = makeRecord(
+            dateKey: makeDateKey(tomorrow, calendar: settings.calendar),
+            fireDate: fireDate
+        )
+        try SettingsStore.saveRecordsThrowing([record], defaults: defaults)
+        let driver = FakeAlarmDriver(alarms: [systemAlarm(for: record)])
+        let weather = CountingForecastService()
+        let coordinator = AlarmCoordinator(
+            alarmDriver: driver,
+            weatherService: weather,
+            credentialStore: credentialStore,
+            defaultsSuiteName: suiteName
+        )
+
+        let deletion = try await coordinator.deleteAlarm(
+            id: record.alarmID,
+            now: now
+        )
+        let alarmsAfterDeletion = await driver.currentAlarmIDs()
+
+        XCTAssertEqual(deletion.outcome, .skipped)
+        XCTAssertFalse(alarmsAfterDeletion.contains(record.alarmID))
+
+        let refresh = try await coordinator.refreshUpcoming(
+            settings: settings,
+            now: now
+        )
+        let snapshot = await coordinator.snapshot(now: now)
+        let fetchCount = await weather.currentFetchCount()
+
+        XCTAssertEqual(refresh.outcome, .skipped)
+        XCTAssertEqual(fetchCount, 0)
+        XCTAssertFalse(snapshot.records.contains {
+            $0.dateKey == record.dateKey
+        })
+        switch SettingsStore.loadSuppressedAlarmDateKeysResult(defaults: defaults) {
+        case .success(let dateKeys):
+            XCTAssertTrue(dateKeys.contains(record.dateKey))
+        case .failure(let error):
+            XCTFail("Unexpected suppression load failure: \(error)")
+        }
+    }
+
+    func testManualRepairRestoresDeletedAlarmDate() async throws {
+        var settings = AppSettings()
+        settings.enabledWeekdays = Set(1...7)
+        let tomorrow = try XCTUnwrap(
+            settings.calendar.date(byAdding: .day, value: 1, to: now)
+        )
+        let fireDate = try XCTUnwrap(
+            settings.fallbackAlarmTime.alarmDate(
+                on: tomorrow,
+                calendar: settings.calendar
+            )
+        )
+        let record = makeRecord(
+            dateKey: makeDateKey(tomorrow, calendar: settings.calendar),
+            fireDate: fireDate
+        )
+        try SettingsStore.saveRecordsThrowing([record], defaults: defaults)
+        let driver = FakeAlarmDriver(alarms: [systemAlarm(for: record)])
+        let coordinator = try makeCoordinator(driver: driver)
+
+        _ = try await coordinator.deleteAlarm(id: record.alarmID, now: now)
+        _ = try await coordinator.authorizeAndPrepare(
+            settings: settings,
+            now: now
+        )
+        let snapshot = await coordinator.snapshot(now: now)
+
+        XCTAssertTrue(snapshot.records.contains {
+            $0.dateKey == record.dateKey
+        })
+        switch SettingsStore.loadSuppressedAlarmDateKeysResult(defaults: defaults) {
+        case .success(let dateKeys):
+            XCTAssertTrue(dateKeys.isEmpty)
+        case .failure(let error):
+            XCTFail("Unexpected suppression load failure: \(error)")
+        }
+    }
+
+    func testFailedDeletionRemainsSuppressedAndSnapshotRetriesCancellation() async throws {
+        var settings = AppSettings()
+        settings.enabledWeekdays = Set(1...7)
+        let tomorrow = try XCTUnwrap(
+            settings.calendar.date(byAdding: .day, value: 1, to: now)
+        )
+        let fireDate = try XCTUnwrap(
+            settings.fallbackAlarmTime.alarmDate(
+                on: tomorrow,
+                calendar: settings.calendar
+            )
+        )
+        let record = makeRecord(
+            dateKey: makeDateKey(tomorrow, calendar: settings.calendar),
+            fireDate: fireDate
+        )
+        try SettingsStore.saveRecordsThrowing([record], defaults: defaults)
+        let driver = FakeAlarmDriver(alarms: [systemAlarm(for: record)])
+        await driver.setCancelFailure(for: record.alarmID, enabled: true)
+        let coordinator = try makeCoordinator(driver: driver)
+
+        do {
+            _ = try await coordinator.deleteAlarm(id: record.alarmID, now: now)
+            XCTFail("The injected AlarmKit cancellation must fail.")
+        } catch let error as AlarmCoordinatorError {
+            guard case .alarmDeletionFailed = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+        }
+
+        switch SettingsStore.loadSuppressedAlarmDateKeysResult(defaults: defaults) {
+        case .success(let dateKeys):
+            XCTAssertTrue(dateKeys.contains(record.dateKey))
+        case .failure(let error):
+            XCTFail("Unexpected suppression load failure: \(error)")
+        }
+
+        await driver.setCancelFailure(for: record.alarmID, enabled: false)
+        let snapshot = await coordinator.snapshot(now: now)
+        let alarmIDs = await driver.currentAlarmIDs()
+
+        XCTAssertFalse(snapshot.records.contains { $0.alarmID == record.alarmID })
+        XCTAssertFalse(alarmIDs.contains(record.alarmID))
     }
 
     func testLostPersistenceKeepsUnknownAlarmUntilPrepareBuildsReplacement() async throws {

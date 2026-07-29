@@ -4,6 +4,7 @@ struct ContentView: View {
     enum Route: Hashable {
         case settings
         case automation
+        case alarms
     }
 
     @ObservedObject var model: AppModel
@@ -17,6 +18,8 @@ struct ContentView: View {
                         SettingsView(model: model)
                     case .automation:
                         AutomationGuideView()
+                    case .alarms:
+                        AlarmManagementView(model: model)
                     }
                 }
         }

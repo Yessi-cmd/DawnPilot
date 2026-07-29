@@ -13,6 +13,7 @@
 		06BCE3B821951558C9CB49F5 /* AppOperationIssueFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BE37BCD7274E8AD90F850FC /* AppOperationIssueFactory.swift */; };
 		18813EAC0273F5F6ACE8005F /* RefreshTomorrowAlarmIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04C54A24DDA119F3C9642DB /* RefreshTomorrowAlarmIntent.swift */; };
 		24CF5E0BBAE0FAC064056E00 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6B98512CD54A1CCCCFBE67C /* ContentView.swift */; };
+		4623CA5031D977302926634E /* AlarmManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B96386DD9551BB20DAD8B4E /* AlarmManagementView.swift */; };
 		4CBAB529730B3C7CC62A8ED1 /* AlarmDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AAA230AF4557B86DD02BBD9 /* AlarmDriver.swift */; };
 		5242D6ED69424A858A6B55FC /* PrecipitationEvaluatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB6493238441C94918617446 /* PrecipitationEvaluatorTests.swift */; };
 		57D980DC543F3178139D4F3E /* AlarmCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDC67AFE740B4A74442F6340 /* AlarmCoordinator.swift */; };
@@ -52,6 +53,7 @@
 		332460A69250F875C1B0F410 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		4E78FB89C2CD75914FFD8744 /* WeatherModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherModels.swift; sourceTree = "<group>"; };
 		5B7EB7F739193FF390D67FE3 /* OperationFeedbackSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperationFeedbackSection.swift; sourceTree = "<group>"; };
+		5B96386DD9551BB20DAD8B4E /* AlarmManagementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlarmManagementView.swift; sourceTree = "<group>"; };
 		5E2A2EB3D0AFF3D2C91D7715 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		7BE37BCD7274E8AD90F850FC /* AppOperationIssueFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppOperationIssueFactory.swift; sourceTree = "<group>"; };
 		7E3F6C5937A4089FDC8BCF46 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
@@ -135,6 +137,7 @@
 		CA446EB84B5648E971B94475 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				5B96386DD9551BB20DAD8B4E /* AlarmManagementView.swift */,
 				7BE37BCD7274E8AD90F850FC /* AppOperationIssueFactory.swift */,
 				90929A3396B8BABCD7E07543 /* AppPresentationState.swift */,
 				F6B98512CD54A1CCCCFBE67C /* ContentView.swift */,
@@ -251,6 +254,7 @@
 			files = (
 				57D980DC543F3178139D4F3E /* AlarmCoordinator.swift in Sources */,
 				4CBAB529730B3C7CC62A8ED1 /* AlarmDriver.swift in Sources */,
+				4623CA5031D977302926634E /* AlarmManagementView.swift in Sources */,
 				C082FE4690BD3F81A43C7E7D /* AppModel.swift in Sources */,
 				06BCE3B821951558C9CB49F5 /* AppOperationIssueFactory.swift in Sources */,
 				01A35005033916F7A23E06AB /* AppPresentationState.swift in Sources */,
@@ -326,7 +330,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -438,7 +442,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;

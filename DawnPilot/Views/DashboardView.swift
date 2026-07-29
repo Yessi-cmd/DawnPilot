@@ -267,14 +267,26 @@ private struct DashboardProtectionCard: View {
             }
 
             if isAuthorized {
-                Button(
-                    "修复 14 天保底闹钟",
-                    systemImage: "shield.checkered",
-                    action: repairAction
-                )
-                .font(.subheadline.weight(.semibold))
-                .frame(maxWidth: .infinity)
-                .buttonStyle(.glass)
+                HStack(spacing: 10) {
+                    if !futureRecords.isEmpty {
+                        NavigationLink(value: ContentView.Route.alarms) {
+                            Label("管理闹钟", systemImage: "list.bullet")
+                                .font(.subheadline.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.glass)
+                    }
+
+                    Button(
+                        "修复保底",
+                        systemImage: "shield.checkered",
+                        action: repairAction
+                    )
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .buttonStyle(.glass)
+                    .disabled(isWorking)
+                }
                 .disabled(isWorking)
             }
         }

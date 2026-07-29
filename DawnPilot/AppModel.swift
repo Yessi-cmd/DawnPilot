@@ -114,6 +114,21 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func deleteAlarm(_ record: ManagedAlarmRecord) {
+        guard beginOperation(.deletingAlarm) else { return }
+
+        Task {
+            do {
+                let result = try await AlarmCoordinator.shared.deleteAlarm(
+                    id: record.alarmID
+                )
+                await finishOperation(with: result)
+            } catch {
+                await finishOperation(with: error, settingsWereSaved: false)
+            }
+        }
+    }
+
     func saveAndRebuild() {
         saveAndRebuild(
             settings: settings,

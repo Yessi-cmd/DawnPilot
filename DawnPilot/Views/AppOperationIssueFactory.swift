@@ -53,6 +53,12 @@ enum AppOperationIssueFactory {
                 message: "请检查固定时区和各项时间设置后重试。",
                 recoveryAction: .editSettings
             )
+        case .alarmDeletionFailed:
+            AppPresentationState.OperationIssue(
+                title: "闹钟删除未完成",
+                message: "这个日期已经停止自动重建，但系统闹钟仍可能存在。请稍后再次删除。",
+                recoveryAction: nil
+            )
         case .persistence:
             AppPresentationState.OperationIssue(
                 title: "闹钟记录未能安全保存",
