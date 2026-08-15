@@ -4,6 +4,7 @@ struct CoordinatorSnapshot: Sendable {
     let authorization: AlarmAuthorization
     let records: [ManagedAlarmRecord]
     let status: RefreshStatus
+    let suppressedAlarmDateKeys: Set<String>
     let alarmsVerified: Bool
 }
 
@@ -153,8 +154,29 @@ actor AlarmCoordinator {
         id: UUID,
         now: Date = .now
     ) async throws -> RefreshStatus {
+        try await deleteAlarms(ids: [id], now: now)
+    }
+
+    func deleteAlarms(
+        ids: [UUID],
+        now: Date = .now
+    ) async throws -> RefreshStatus {
         try await runSerialized {
-            try await self.performDeleteAlarm(id: id, now: now)
+            try await self.performDeleteAlarms(ids: ids, now: now)
+        }
+    }
+
+    func restoreAlarmDate(
+        dateKey: String,
+        settings: AppSettings,
+        now: Date = .now
+    ) async throws -> RefreshStatus {
+        try await runSerialized {
+            try await self.performRestoreAlarmDate(
+                dateKey: dateKey,
+                settings: settings,
+                now: now
+            )
         }
     }
 
@@ -201,6 +223,13 @@ actor AlarmCoordinator {
             do {
                 try preparePersistedState()
                 try pruneExpiredRecords(now: now)
+                if case .success(let persistedSettings?) =
+                    SettingsStore.loadPersistedSettingsResult(defaults: defaults) {
+                    try pruneSuppressedAlarmDateKeys(
+                        settings: persistedSettings,
+                        now: now
+                    )
+                }
                 alarmsVerified = try await reconcileSystemState(now: now)
             } catch {
                 saveFailureStatus(
@@ -213,6 +242,7 @@ actor AlarmCoordinator {
             authorization: authorization,
             records: records.sorted { $0.fireDate < $1.fireDate },
             status: SettingsStore.loadStatus(defaults: defaults),
+            suppressedAlarmDateKeys: suppressedAlarmDateKeys,
             alarmsVerified: alarmsVerified
         )
     }
@@ -242,6 +272,7 @@ actor AlarmCoordinator {
         )
         if restoredDateCount > 0 {
             try persistSuppressedAlarmDateKeys([])
+            try await ensureCurrentDaySafetyAlarm(settings: settings, now: now)
         }
         let status = RefreshStatus(
             outcome: .prepared,
@@ -257,16 +288,19 @@ actor AlarmCoordinator {
         return status
     }
 
-    private func performDeleteAlarm(
-        id: UUID,
+    private func performDeleteAlarms(
+        ids: [UUID],
         now: Date
     ) async throws -> RefreshStatus {
         try preparePersistedState()
         try await requireAuthorization()
         _ = try await reconcileSystemState(now: now)
 
-        guard let record = records.first(where: { $0.alarmID == id }),
-              record.fireDate > now else {
+        let requestedIDs = Set(ids)
+        let matchingRecords = records.filter {
+            requestedIDs.contains($0.alarmID) && $0.fireDate > now
+        }
+        guard !matchingRecords.isEmpty else {
             let status = RefreshStatus(
                 outcome: .skipped,
                 message: "这条闹钟已经不存在，无需再次删除。",
@@ -279,9 +313,12 @@ actor AlarmCoordinator {
             return status
         }
 
-        var updatedSuppressedDateKeys = suppressedAlarmDateKeys
-        updatedSuppressedDateKeys.insert(record.dateKey)
-        try persistSuppressedAlarmDateKeys(updatedSuppressedDateKeys)
+        let matchingDateKeys = Set(matchingRecords.map(\.dateKey))
+        let updatedSuppressedDateKeys = suppressedAlarmDateKeys
+            .union(matchingDateKeys)
+        if updatedSuppressedDateKeys != suppressedAlarmDateKeys {
+            try persistSuppressedAlarmDateKeys(updatedSuppressedDateKeys)
+        }
 
         do {
             try await applySuppressedAlarmDeletions()
@@ -293,8 +330,73 @@ actor AlarmCoordinator {
 
         let status = RefreshStatus(
             outcome: .skipped,
-            message: "已删除所选闹钟；快捷指令不会自动恢复这个日期。",
+            message: matchingRecords.count == 1
+                ? "已删除所选闹钟；快捷指令不会自动恢复这个日期。"
+                : "已删除 \(matchingRecords.count) 条闹钟；这些日期不会自动恢复。",
             alarmDate: nextRecord(after: now)?.fireDate,
+            updatedAt: now,
+            forecastFetchedAt: nil,
+            forecastWasStale: false
+        )
+        SettingsStore.saveStatus(status, defaults: defaults)
+        return status
+    }
+
+    private func performRestoreAlarmDate(
+        dateKey: String,
+        settings: AppSettings,
+        now: Date
+    ) async throws -> RefreshStatus {
+        try validate(settings)
+        try await requireAuthorization()
+        try pruneSuppressedAlarmDateKeys(settings: settings, now: now)
+
+        guard suppressedAlarmDateKeys.contains(dateKey) else {
+            let status = RefreshStatus(
+                outcome: .skipped,
+                message: "这个日期没有处于删除状态，无需恢复。",
+                alarmDate: nextRecord(after: now)?.fireDate,
+                updatedAt: now,
+                forecastFetchedAt: nil,
+                forecastWasStale: false
+            )
+            SettingsStore.saveStatus(status, defaults: defaults)
+            return status
+        }
+        guard let targetDay = makeDay(from: dateKey, calendar: settings.calendar) else {
+            throw AlarmCoordinatorError.invalidSettings(
+                "已删除闹钟日期无法解析，请检查固定时区设置。"
+            )
+        }
+
+        var updatedSuppressedDateKeys = suppressedAlarmDateKeys
+        updatedSuppressedDateKeys.remove(dateKey)
+        try persistSuppressedAlarmDateKeys(updatedSuppressedDateKeys)
+
+        _ = try await ensureFallbackHorizon(settings: settings, now: now)
+        try await ensureCurrentDaySafetyAlarm(settings: settings, now: now)
+
+        let restoredRecord = records.first {
+            $0.dateKey == dateKey && $0.fireDate > now
+        }
+        let dayLabel = dayLabel(for: targetDay, calendar: settings.calendar)
+        let message: String
+        if restoredRecord != nil {
+            message = "已恢复\(dayLabel)的闹钟。"
+        } else if !settings.isEnabledAlarmDay(targetDay) {
+            message = "已恢复\(dayLabel)的删除状态；当天不是启用的闹钟日，不会立即创建闹钟。"
+        } else if let fallbackDate = settings.fallbackAlarmTime.alarmDate(
+            on: targetDay,
+            calendar: settings.calendar
+        ), fallbackDate <= now {
+            message = "已恢复\(dayLabel)的删除状态；当天的保底时间已过，不会补建闹钟。"
+        } else {
+            message = "已恢复\(dayLabel)的删除状态；该日期将在进入未来 14 天范围或下次刷新时创建。"
+        }
+        let status = RefreshStatus(
+            outcome: .prepared,
+            message: message,
+            alarmDate: restoredRecord?.fireDate ?? nextRecord(after: now)?.fireDate,
             updatedAt: now,
             forecastFetchedAt: nil,
             forecastWasStale: false
@@ -1883,14 +1985,32 @@ actor AlarmCoordinator {
             availableAlarms = try await alarmDriver.alarms()
         }
         let activeIDs = Set(availableAlarms.map(\.id))
-        for record in suppressedRecords where activeIDs.contains(record.alarmID) {
-            try await alarmDriver.cancel(id: record.alarmID)
+        var removedRecordIDs: Set<UUID> = []
+        var firstCancellationError: Error?
+
+        for record in suppressedRecords {
+            if activeIDs.contains(record.alarmID) {
+                do {
+                    try await alarmDriver.cancel(id: record.alarmID)
+                } catch {
+                    if firstCancellationError == nil {
+                        firstCancellationError = error
+                    }
+                    continue
+                }
+            }
+            removedRecordIDs.insert(record.alarmID)
         }
 
-        let suppressedRecordIDs = Set(suppressedRecords.map(\.alarmID))
-        try persistRecords(records.filter {
-            !suppressedRecordIDs.contains($0.alarmID)
-        })
+        let retainedRecords = records.filter {
+            !removedRecordIDs.contains($0.alarmID)
+        }
+        if retainedRecords != records {
+            try persistRecords(retainedRecords)
+        }
+        if let firstCancellationError {
+            throw firstCancellationError
+        }
     }
 
     private func pruneSuppressedAlarmDateKeys(
@@ -2008,6 +2128,47 @@ actor AlarmCoordinator {
             components.month ?? 0,
             components.day ?? 0
         )
+    }
+
+    private func makeDay(from dateKey: String, calendar: Calendar) -> Date? {
+        let parts = dateKey.split(separator: "-", omittingEmptySubsequences: false)
+        guard dateKey.count == 10,
+              parts.count == 3,
+              parts[0].count == 4,
+              parts[1].count == 2,
+              parts[2].count == 2,
+              let year = Int(parts[0]),
+              let month = Int(parts[1]),
+              let day = Int(parts[2]),
+              let date = calendar.date(from: DateComponents(
+                  year: year,
+                  month: month,
+                  day: day
+              )) else {
+            return nil
+        }
+        let resolved = calendar.dateComponents(
+            [.year, .month, .day],
+            from: date
+        )
+        guard resolved.year == year,
+              resolved.month == month,
+              resolved.day == day,
+              makeDateKey(date, calendar: calendar) == dateKey else {
+            return nil
+        }
+        return date
+    }
+
+    private func dayLabel(for day: Date, calendar: Calendar) -> String {
+        let month = calendar.component(.month, from: day)
+        let dayOfMonth = calendar.component(.day, from: day)
+        let weekday = calendar.component(.weekday, from: day)
+        let weekdayNames = calendar.weekdaySymbols
+        let weekdayText = weekdayNames.isEmpty
+            ? ""
+            : " \(weekdayNames[weekday - 1])"
+        return "\(month)月\(dayOfMonth)日\(weekdayText)"
     }
 
     private func datesMatch(_ lhs: Date, _ rhs: Date) -> Bool {

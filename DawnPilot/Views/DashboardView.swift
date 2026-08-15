@@ -268,14 +268,12 @@ private struct DashboardProtectionCard: View {
 
             if isAuthorized {
                 HStack(spacing: 10) {
-                    if !futureRecords.isEmpty {
-                        NavigationLink(value: ContentView.Route.alarms) {
-                            Label("管理闹钟", systemImage: "list.bullet")
-                                .font(.subheadline.weight(.semibold))
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.glass)
+                    NavigationLink(value: ContentView.Route.alarms) {
+                        Label("管理闹钟", systemImage: "list.bullet")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity)
                     }
+                    .buttonStyle(.glass)
 
                     Button(
                         "修复保底",

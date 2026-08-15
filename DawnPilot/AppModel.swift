@@ -12,6 +12,7 @@ final class AppModel: ObservableObject {
     @Published var settings: AppSettings
     @Published private(set) var status: RefreshStatus
     @Published private(set) var records: [ManagedAlarmRecord] = []
+    @Published private(set) var suppressedAlarmDateKeys: Set<String> = []
     @Published private(set) var authorization: AlarmAuthorization?
     @Published private(set) var isWorking = false
     @Published private(set) var snapshotState: SnapshotState = .loading
@@ -115,12 +116,36 @@ final class AppModel: ObservableObject {
     }
 
     func deleteAlarm(_ record: ManagedAlarmRecord) {
+        deleteAlarms([record])
+    }
+
+    func deleteAlarms(_ alarms: [ManagedAlarmRecord]) {
+        let requestedIDs = alarms.map(\.alarmID)
+        guard !requestedIDs.isEmpty else { return }
         guard beginOperation(.deletingAlarm) else { return }
 
         Task {
             do {
-                let result = try await AlarmCoordinator.shared.deleteAlarm(
-                    id: record.alarmID
+                let result = try await AlarmCoordinator.shared.deleteAlarms(
+                    ids: requestedIDs
+                )
+                await finishOperation(with: result)
+            } catch {
+                await finishOperation(with: error, settingsWereSaved: false)
+            }
+        }
+    }
+
+    func restoreAlarmDate(_ dateKey: String) {
+        let requestedSettings = settings
+        guard validate(requestedSettings) else { return }
+        guard beginOperation(.restoringAlarm) else { return }
+
+        Task {
+            do {
+                let result = try await AlarmCoordinator.shared.restoreAlarmDate(
+                    dateKey: dateKey,
+                    settings: requestedSettings
                 )
                 await finishOperation(with: result)
             } catch {
@@ -379,6 +404,7 @@ final class AppModel: ObservableObject {
     private func apply(_ snapshot: CoordinatorSnapshot) {
         authorization = snapshot.authorization
         records = snapshot.records
+        suppressedAlarmDateKeys = snapshot.suppressedAlarmDateKeys
         status = snapshot.status
         alarmVerificationState = snapshot.alarmsVerified
             ? .verified(Date.now)

@@ -856,6 +856,7 @@ final class AlarmCoordinatorTests: XCTestCase {
         XCTAssertFalse(snapshot.records.contains {
             $0.dateKey == record.dateKey
         })
+        XCTAssertTrue(snapshot.suppressedAlarmDateKeys.contains(record.dateKey))
         switch SettingsStore.loadSuppressedAlarmDateKeysResult(defaults: defaults) {
         case .success(let dateKeys):
             XCTAssertTrue(dateKeys.contains(record.dateKey))
@@ -945,6 +946,244 @@ final class AlarmCoordinatorTests: XCTestCase {
 
         XCTAssertFalse(snapshot.records.contains { $0.alarmID == record.alarmID })
         XCTAssertFalse(alarmIDs.contains(record.alarmID))
+    }
+
+    func testManualRepairRestoresDeletedTodayAlarmWhileStillInFuture() async throws {
+        var settings = AppSettings()
+        settings.enabledWeekdays = Set(1...7)
+        let localCalendar = settings.calendar
+        let operationNow = try XCTUnwrap(localCalendar.date(from: DateComponents(
+            year: 2026,
+            month: 7,
+            day: 25,
+            hour: 6
+        )))
+        let today = localCalendar.startOfDay(for: operationNow)
+        let fallbackDate = try XCTUnwrap(
+            settings.fallbackAlarmTime.alarmDate(
+                on: today,
+                calendar: localCalendar
+            )
+        )
+        let record = makeRecord(
+            dateKey: makeDateKey(today, calendar: localCalendar),
+            fireDate: fallbackDate
+        )
+        try SettingsStore.saveRecordsThrowing([record], defaults: defaults)
+        let driver = FakeAlarmDriver(alarms: [systemAlarm(for: record)])
+        let coordinator = try makeCoordinator(driver: driver)
+
+        _ = try await coordinator.deleteAlarm(
+            id: record.alarmID,
+            now: operationNow
+        )
+        let repair = try await coordinator.authorizeAndPrepare(
+            settings: settings,
+            now: operationNow
+        )
+        let snapshot = await coordinator.snapshot(now: operationNow)
+        let scheduledRecords = await driver.scheduledRecords()
+
+        XCTAssertTrue(repair.message.contains("恢复 1 个删除日期"))
+        XCTAssertTrue(snapshot.records.contains {
+            $0.dateKey == record.dateKey && $0.fireDate == fallbackDate
+        })
+        XCTAssertTrue(scheduledRecords.contains {
+            $0.dateKey == record.dateKey && $0.fireDate == fallbackDate
+        })
+    }
+
+    func testBatchDeleteRemovesOnlySelectedAlarmDates() async throws {
+        var settings = AppSettings()
+        settings.enabledWeekdays = Set(1...7)
+        let dayOne = try XCTUnwrap(
+            settings.calendar.date(byAdding: .day, value: 1, to: now)
+        )
+        let dayTwo = try XCTUnwrap(
+            settings.calendar.date(byAdding: .day, value: 2, to: now)
+        )
+        let dayThree = try XCTUnwrap(
+            settings.calendar.date(byAdding: .day, value: 3, to: now)
+        )
+        let first = makeRecord(
+            dateKey: makeDateKey(dayOne, calendar: settings.calendar),
+            fireDate: try XCTUnwrap(settings.fallbackAlarmTime.alarmDate(
+                on: dayOne,
+                calendar: settings.calendar
+            ))
+        )
+        let second = makeRecord(
+            dateKey: makeDateKey(dayTwo, calendar: settings.calendar),
+            fireDate: try XCTUnwrap(settings.fallbackAlarmTime.alarmDate(
+                on: dayTwo,
+                calendar: settings.calendar
+            ))
+        )
+        let third = makeRecord(
+            dateKey: makeDateKey(dayThree, calendar: settings.calendar),
+            fireDate: try XCTUnwrap(settings.fallbackAlarmTime.alarmDate(
+                on: dayThree,
+                calendar: settings.calendar
+            ))
+        )
+        try SettingsStore.saveRecordsThrowing(
+            [first, second, third],
+            defaults: defaults
+        )
+        let driver = FakeAlarmDriver(alarms: [
+            systemAlarm(for: first),
+            systemAlarm(for: second),
+            systemAlarm(for: third)
+        ])
+        let coordinator = try makeCoordinator(driver: driver)
+
+        let deletion = try await coordinator.deleteAlarms(
+            ids: [first.alarmID, second.alarmID],
+            now: now
+        )
+        let alarmIDs = await driver.currentAlarmIDs()
+        let snapshot = await coordinator.snapshot(now: now)
+
+        XCTAssertTrue(deletion.message.contains("2 条"))
+        XCTAssertFalse(alarmIDs.contains(first.alarmID))
+        XCTAssertFalse(alarmIDs.contains(second.alarmID))
+        XCTAssertTrue(alarmIDs.contains(third.alarmID))
+        XCTAssertFalse(snapshot.records.contains {
+            $0.dateKey == first.dateKey || $0.dateKey == second.dateKey
+        })
+        XCTAssertTrue(snapshot.records.contains {
+            $0.dateKey == third.dateKey
+        })
+        switch SettingsStore.loadSuppressedAlarmDateKeysResult(defaults: defaults) {
+        case .success(let dateKeys):
+            XCTAssertTrue(dateKeys.contains(first.dateKey))
+            XCTAssertTrue(dateKeys.contains(second.dateKey))
+            XCTAssertFalse(dateKeys.contains(third.dateKey))
+        case .failure(let error):
+            XCTFail("Unexpected suppression load failure: \(error)")
+        }
+    }
+
+    func testRestoreSingleDeletedDateRecreatesOnlyThatDate() async throws {
+        var settings = AppSettings()
+        settings.enabledWeekdays = Set(1...7)
+        let dayOne = try XCTUnwrap(
+            settings.calendar.date(byAdding: .day, value: 1, to: now)
+        )
+        let dayTwo = try XCTUnwrap(
+            settings.calendar.date(byAdding: .day, value: 2, to: now)
+        )
+        let first = makeRecord(
+            dateKey: makeDateKey(dayOne, calendar: settings.calendar),
+            fireDate: try XCTUnwrap(settings.fallbackAlarmTime.alarmDate(
+                on: dayOne,
+                calendar: settings.calendar
+            ))
+        )
+        let second = makeRecord(
+            dateKey: makeDateKey(dayTwo, calendar: settings.calendar),
+            fireDate: try XCTUnwrap(settings.fallbackAlarmTime.alarmDate(
+                on: dayTwo,
+                calendar: settings.calendar
+            ))
+        )
+        try SettingsStore.saveRecordsThrowing([first, second], defaults: defaults)
+        let driver = FakeAlarmDriver(alarms: [
+            systemAlarm(for: first),
+            systemAlarm(for: second)
+        ])
+        let coordinator = try makeCoordinator(driver: driver)
+
+        _ = try await coordinator.deleteAlarms(
+            ids: [first.alarmID, second.alarmID],
+            now: now
+        )
+        let restore = try await coordinator.restoreAlarmDate(
+            dateKey: first.dateKey,
+            settings: settings,
+            now: now
+        )
+        let snapshot = await coordinator.snapshot(now: now)
+        let scheduledRecords = await driver.scheduledRecords()
+
+        XCTAssertEqual(restore.outcome, .prepared)
+        XCTAssertTrue(snapshot.records.contains { $0.dateKey == first.dateKey })
+        XCTAssertFalse(snapshot.records.contains { $0.dateKey == second.dateKey })
+        XCTAssertTrue(scheduledRecords.contains { $0.dateKey == first.dateKey })
+        XCTAssertFalse(scheduledRecords.contains { $0.dateKey == second.dateKey })
+        switch SettingsStore.loadSuppressedAlarmDateKeysResult(defaults: defaults) {
+        case .success(let dateKeys):
+            XCTAssertFalse(dateKeys.contains(first.dateKey))
+            XCTAssertTrue(dateKeys.contains(second.dateKey))
+        case .failure(let error):
+            XCTFail("Unexpected suppression load failure: \(error)")
+        }
+    }
+
+    func testBatchDeletionKeepsSuccessfulCancellationsWhenOneFails() async throws {
+        var settings = AppSettings()
+        settings.enabledWeekdays = Set(1...7)
+        let dayOne = try XCTUnwrap(
+            settings.calendar.date(byAdding: .day, value: 1, to: now)
+        )
+        let dayTwo = try XCTUnwrap(
+            settings.calendar.date(byAdding: .day, value: 2, to: now)
+        )
+        let first = makeRecord(
+            dateKey: makeDateKey(dayOne, calendar: settings.calendar),
+            fireDate: try XCTUnwrap(settings.fallbackAlarmTime.alarmDate(
+                on: dayOne,
+                calendar: settings.calendar
+            ))
+        )
+        let second = makeRecord(
+            dateKey: makeDateKey(dayTwo, calendar: settings.calendar),
+            fireDate: try XCTUnwrap(settings.fallbackAlarmTime.alarmDate(
+                on: dayTwo,
+                calendar: settings.calendar
+            ))
+        )
+        try SettingsStore.saveRecordsThrowing([first, second], defaults: defaults)
+        let driver = FakeAlarmDriver(alarms: [
+            systemAlarm(for: first),
+            systemAlarm(for: second)
+        ])
+        await driver.setCancelFailure(for: first.alarmID, enabled: true)
+        let coordinator = try makeCoordinator(driver: driver)
+
+        do {
+            _ = try await coordinator.deleteAlarms(
+                ids: [first.alarmID, second.alarmID],
+                now: now
+            )
+            XCTFail("The injected AlarmKit cancellation must fail.")
+        } catch let error as AlarmCoordinatorError {
+            guard case .alarmDeletionFailed = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+        }
+
+        var alarmIDs = await driver.currentAlarmIDs()
+        XCTAssertTrue(alarmIDs.contains(first.alarmID))
+        XCTAssertFalse(alarmIDs.contains(second.alarmID))
+
+        var snapshot = await coordinator.snapshot(now: now)
+        XCTAssertTrue(snapshot.records.contains { $0.alarmID == first.alarmID })
+        XCTAssertFalse(snapshot.records.contains { $0.alarmID == second.alarmID })
+
+        await driver.setCancelFailure(for: first.alarmID, enabled: false)
+        snapshot = await coordinator.snapshot(now: now)
+        alarmIDs = await driver.currentAlarmIDs()
+
+        XCTAssertFalse(snapshot.records.contains { $0.alarmID == first.alarmID })
+        XCTAssertFalse(alarmIDs.contains(first.alarmID))
+        switch SettingsStore.loadSuppressedAlarmDateKeysResult(defaults: defaults) {
+        case .success(let dateKeys):
+            XCTAssertTrue(dateKeys.contains(first.dateKey))
+            XCTAssertTrue(dateKeys.contains(second.dateKey))
+        case .failure(let error):
+            XCTFail("Unexpected suppression load failure: \(error)")
+        }
     }
 
     func testLostPersistenceKeepsUnknownAlarmUntilPrepareBuildsReplacement() async throws {

@@ -18,6 +18,7 @@ enum AppPresentationState {
         case rebuildingFallbacks
         case refreshingWeather
         case deletingAlarm
+        case restoringAlarm
 
         var message: String {
             switch self {
@@ -31,6 +32,8 @@ enum AppPresentationState {
                 "正在获取天气并更新起床闹钟…"
             case .deletingAlarm:
                 "正在删除闹钟…"
+            case .restoringAlarm:
+                "正在恢复闹钟…"
             }
         }
     }
